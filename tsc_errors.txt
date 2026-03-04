@@ -1,0 +1,25 @@
+src/components/ar/ARButton.tsx(2,20): error TS7016: Could not find a declaration file for module 'qrious'. 'E:/Chimney chase configurator/chase-configurator-new/node_modules/qrious/dist/qrious.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/qrious` if it exists or add a new declaration (.d.ts) file containing `declare module 'qrious';`
+src/components/ar/ARButton.tsx(8,12): error TS6133: 'showARLoading' is declared but its value is never read.
+src/components/ar/ARButton.tsx(9,12): error TS6133: 'arSrc' is declared but its value is never read.
+src/components/ar/ARButton.tsx(9,19): error TS6133: 'setArSrc' is declared but its value is never read.
+src/components/ar/ARButton.tsx(25,23): error TS6133: 'exportToGLB' is declared but its value is never read.
+src/components/ral/RalModal.tsx(3,22): error TS1484: 'RalColor' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/components/ral/RalModal.tsx(3,22): error TS6133: 'RalColor' is declared but its value is never read.
+src/components/sidebar/CartRow.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/sidebar/CollarGroup.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/components/sidebar/DimensionField.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/components/sidebar/GaugeSelect.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/sidebar/HoleSelector.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/sidebar/NotesField.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/sidebar/PowderCoatSection.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/components/sidebar/PriceDisplay.tsx(1,1): error TS6192: All imports in import declaration are unused.
+src/components/sidebar/ToggleRow.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/viewer/ChaseModel.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/components/viewer/ChaseViewer.tsx(1,1): error TS6192: All imports in import declaration are unused.
+src/utils/ar.ts(3,10): error TS1484: 'ConfigState' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/utils/ar.ts(3,23): error TS1484: 'CollarState' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/utils/ar.ts(3,23): error TS6133: 'CollarState' is declared but its value is never read.
+src/utils/geometry.ts(2,10): error TS1484: 'ConfigState' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/utils/geometry.ts(2,23): error TS1484: 'CollarState' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/utils/geometry.ts(187,60): error TS6133: 'T' is declared but its value is never read.

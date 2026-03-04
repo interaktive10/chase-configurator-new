@@ -1,0 +1,228 @@
+import { useEffect, useRef, useState } from 'react';
+import { Sidebar } from './components/sidebar/Sidebar';
+import { ChaseViewer } from './components/viewer/ChaseViewer';
+import { useConfigStore } from './store/configStore';
+import { applyConfigState, getConfigState, exportToGLB } from './utils/ar';
+import { cameraActions } from './utils/cameraRef';
+import { RalModal } from './components/ral/RalModal';
+import { formatFrac } from './utils/format';
+
+declare global {
+  interface Window { QRious: any; }
+}
+
+declare const __LOCAL_IP__: string | undefined;
+
+
+
+export default function App() {
+  const config = useConfigStore(s => s);
+  const setConfig = useConfigStore(s => s.set);
+
+  const [showMobilePrompt, setShowMobilePrompt] = useState(false);
+  const [arActive, setArActive] = useState(false);
+  const [qrActive, setQrActive] = useState(false);
+  const [arLoading, setArLoading] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
+  const [bdOpen, setBdOpen] = useState(false);
+  const [ralOpen, setRalOpen] = useState(false);
+
+  const arViewerRef = useRef<any>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const qrUrlRef = useRef<HTMLDivElement>(null);
+
+  // Hash restore on mount
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#ar=')) {
+      const restored = applyConfigState(hash.slice(4));
+      setConfig(restored as any);
+      setShowMobilePrompt(true);
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, []);
+
+  // Escape key closes overlays
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setArActive(false); setQrActive(false); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  const isMobile = () =>
+    window.innerWidth <= 900 ||
+    /Mobi|Android|iPad|iPhone/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+
+  async function launchAR() {
+    if (!isMobile()) {
+      // Desktop: generate QR code
+      const stateStr = getConfigState(config);
+
+      let baseUrl = window.location.origin;
+      // If we're on localhost but we have a real network IP from Vite, inject it
+      if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && typeof __LOCAL_IP__ !== 'undefined' && __LOCAL_IP__) {
+        baseUrl = `http://${__LOCAL_IP__}:${window.location.port}`;
+      }
+
+      const url = baseUrl + window.location.pathname + '#ar=' + stateStr;
+
+      if (qrCanvasRef.current && window.QRious) {
+        new window.QRious({ element: qrCanvasRef.current, value: url, size: 200, background: 'white', foreground: 'black', level: 'M' });
+      }
+      if (qrUrlRef.current) qrUrlRef.current.textContent = window.location.origin + window.location.pathname;
+      setQrActive(true);
+      return;
+    }
+    // Mobile: dynamically load model-viewer if not already loaded, then export GLB
+    setArActive(true);
+    setArLoading(true);
+    try {
+      // Dynamically load model-viewer script if not present
+      if (!customElements.get('model-viewer')) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script');
+          script.type = 'module';
+          script.src = 'https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js';
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error('Failed to load model-viewer'));
+          document.head.appendChild(script);
+        });
+        // Wait a moment for custom element registration
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      await new Promise(r => setTimeout(r, 50));
+      const sceneGroup = (window as any).__chaseGroup;
+      if (!sceneGroup) throw new Error('Scene not ready');
+      const url = await exportToGLB(sceneGroup);
+      const viewer = arViewerRef.current;
+      if (viewer) {
+        viewer.setAttribute('src', url);
+        viewer.style.display = 'block';
+      }
+    } catch (e: any) {
+      console.error('AR launch failed:', e);
+      alert('Could not launch AR: ' + (e?.message || 'Unknown error'));
+      setArActive(false);
+    } finally {
+      setArLoading(false);
+    }
+  }
+
+  // Dimension overlay content
+  const dimLines: string[] = [];
+  dimLines.push(`${formatFrac(config.w)}" W × ${formatFrac(config.l)}" L × ${formatFrac(config.sk)}" Skirt`);
+  if (config.holes >= 1) {
+    let t = `H1: ⌀${formatFrac(config.collarA.dia)}"`;
+    t += config.collarA.centered ? ' (on center)' : ` [A1: ${formatFrac(config.collarA.offset3)}" A2: ${formatFrac(config.collarA.offset4)}" A3: ${formatFrac(config.collarA.offset1)}" A4: ${formatFrac(config.collarA.offset2)}"]`;
+    dimLines.push(t);
+  }
+  if (config.holes >= 2) {
+    let t = `H2: ⌀${formatFrac(config.collarB.dia)}"`;
+    t += config.collarB.centered ? ' (on center)' : ` [B1: ${formatFrac(config.collarB.offset3)}" B2: ${formatFrac(config.collarB.offset4)}" B3: ${formatFrac(config.collarB.offset1)}" B4: ${formatFrac(config.collarB.offset2)}"]`;
+    dimLines.push(t);
+  }
+  if (config.holes === 3) {
+    let t = `H3: ⌀${formatFrac(config.collarC.dia)}"`;
+    t += config.collarC.centered ? ' (on center)' : ` [C1: ${formatFrac(config.collarC.offset3)}" C2: ${formatFrac(config.collarC.offset4)}" C3: ${formatFrac(config.collarC.offset1)}" C4: ${formatFrac(config.collarC.offset2)}"]`;
+    dimLines.push(t);
+  }
+
+  return (
+    <>
+      <header>
+        <div className="logo">
+          <div className="logo-mark">K</div>
+          KAMINOS
+        </div>
+        <span className="header-meta">Custom Chase Covers</span>
+      </header>
+
+      <div className="app-layout">
+        <div className="viewport">
+          <ChaseViewer />
+
+          {/* Viewport controls top-left */}
+          <div className="viewport-controls">
+            <button className="vp-btn" title="Reset" onClick={() => cameraActions.reset()}>⟳</button>
+            <button className="vp-btn" title="Top" onClick={() => cameraActions.top()}>⊤</button>
+            <button className="vp-btn" title="Front" onClick={() => cameraActions.front()}>◻</button>
+            <button className="ar-btn desktop-ar" onClick={launchAR}>View in AR</button>
+          </div>
+
+          {/* Mobile AR button */}
+          <button className="ar-btn-mobile" onClick={launchAR}>View in AR</button>
+
+          {/* Dimension overlay top-right */}
+          <div className="dim-overlay">
+            {dimLines.map((line, i) => (
+              <div key={i}>{line}</div>
+            ))}
+          </div>
+
+          <div className="viewport-badge">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+        </div>
+
+        <Sidebar
+          descExpanded={descExpanded}
+          setDescExpanded={setDescExpanded}
+          bdOpen={bdOpen}
+          setBdOpen={setBdOpen}
+          onOpenRal={() => setRalOpen(true)}
+          onAddToCart={() => { console.log('Cart:', JSON.stringify(config, null, 2)); alert('Config ready for Shopify. See console.'); }}
+        />
+      </div>
+
+      {/* RAL Modal */}
+      <RalModal open={ralOpen} onClose={() => setRalOpen(false)} />
+
+      {/* AR Overlay (mobile model-viewer) */}
+      <div className={`ar-overlay${arActive ? ' active' : ''}`}>
+        <button className="ar-close" onClick={() => setArActive(false)}>✕</button>
+        <model-viewer
+          ref={arViewerRef}
+          ar
+          ar-modes="webxr scene-viewer quick-look"
+          camera-controls
+          touch-action="pan-y"
+          auto-rotate
+          shadow-intensity="1"
+          environment-image="neutral"
+          exposure="1.2"
+          alt="Chase Cover 3D Preview"
+          style={{ '--poster-color': '#222', display: arLoading ? 'none' : 'block' } as any}
+        >
+          <button slot="ar-button" style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', padding: '10px 24px', background: '#c9873b', color: '#fff', border: 'none', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            🔮 Place in your space
+          </button>
+        </model-viewer>
+        {arLoading && <div className="ar-loading">Preparing 3D model…</div>}
+      </div>
+
+      {/* QR Overlay (desktop) */}
+      <div className={`qr-overlay${qrActive ? ' active' : ''}`}>
+        <div className="qr-card">
+          <button className="qr-close" onClick={() => setQrActive(false)}>✕</button>
+          <div className="qr-title">View in Your Space</div>
+          <div className="qr-desc">Scan this QR code with your phone's camera to place the chase cover in your environment.</div>
+          <div className="qr-canvas-container">
+            <canvas ref={qrCanvasRef} />
+          </div>
+          <div ref={qrUrlRef} style={{ marginTop: 10, fontSize: 11, color: '#888', wordBreak: 'break-all', maxWidth: 220, textAlign: 'center' }} />
+        </div>
+      </div>
+
+      {/* Mobile AR Prompt (hash restore) */}
+      <div className={`ar-mobile-prompt${showMobilePrompt ? ' active' : ''}`}>
+        <h2>Configuration Loaded</h2>
+        <p>Your custom chase cover is ready to be placed in AR.</p>
+        <button className="launch-ar-big-btn" onClick={() => { setShowMobilePrompt(false); launchAR(); }}>
+          Launch AR Experience
+        </button>
+      </div>
+    </>
+  );
+}
