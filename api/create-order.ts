@@ -22,6 +22,8 @@ interface OrderConfig {
     collarC?: { dia: number; height: number; centered: boolean; offset1: number; offset2: number; offset3: number; offset4: number };
     quantity: number;
     notes: string;
+    shopifyProductId?: string;
+    shopifyVariantId?: string;
 }
 
 // In-memory cache for the Shopify Admin API token
@@ -175,6 +177,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                         quantity: quantity,
                         requires_shipping: true,
                         taxable: true,
+                        ...(config.shopifyVariantId ? { variant_id: Number(config.shopifyVariantId) } : {}),
+                        ...(config.shopifyProductId && !config.shopifyVariantId ? { product_id: Number(config.shopifyProductId) } : {}),
                         properties: [
                             { name: 'Width', value: `${formatFrac(config.w)}"` },
                             { name: 'Length', value: `${formatFrac(config.l)}"` },

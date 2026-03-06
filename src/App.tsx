@@ -14,9 +14,12 @@ declare global {
 
 declare const __LOCAL_IP__: string | undefined;
 
+interface AppProps {
+  productId?: string;
+  variantId?: string;
+}
 
-
-export default function App() {
+export default function App({ productId, variantId }: AppProps = {}) {
   const config = useConfigStore(s => s);
   const setConfig = useConfigStore(s => s.set);
 
@@ -198,6 +201,8 @@ export default function App() {
                 collarC: config.holes >= 3 ? config.collarC : undefined,
                 quantity: config.quantity,
                 notes: config.notes,
+                shopifyProductId: productId,
+                shopifyVariantId: variantId,
               };
 
               // Optional: show a loading state here (could add a state var and overlay)

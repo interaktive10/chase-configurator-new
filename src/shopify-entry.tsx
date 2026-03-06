@@ -122,10 +122,14 @@ import cssText from './styles/globals-scoped.css?inline';
     // Fetch pricing from Google Sheets via Vercel API
     loadPricingFromAPI(apiBase);
 
+    // Read Shopify product/variant IDs from the liquid DOM node
+    const productId = mount.getAttribute('product-id') || undefined;
+    const variantId = mount.getAttribute('variant-id') || undefined;
+
     // 9. Render the React app into the shadow root
     ReactDOM.createRoot(root).render(
         <React.StrictMode>
-            <App />
+            <App productId={productId} variantId={variantId} />
         </React.StrictMode>
     );
 })();
