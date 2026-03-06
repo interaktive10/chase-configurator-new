@@ -47,10 +47,12 @@ async function getShopifyAccessToken() {
 
     if (!res.ok) {
         const text = await res.text();
+        console.error('[DEBUG] Shopify Token Error:', text);
         throw new Error(`Failed to generate Shopify access token: ${res.status} ${text}`);
     }
 
     const data = await res.json();
+    console.log('[DEBUG] Shopify Token Data:', JSON.stringify(data));
     const expiresIn = data.expires_in || 3600; // default to 1 hour if not provided
 
     shopifyTokenCache = {
