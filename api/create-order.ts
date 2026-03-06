@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;           // e.g. "your-store.myshopify.com"
-const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID!;
-const SHOPIFY_CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET!;
+const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN; // shpat_...
+const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
+const SHOPIFY_CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID!;
 const GOOGLE_SHEETS_API_KEY = process.env.GOOGLE_SHEETS_API_KEY!;
 
@@ -30,9 +31,17 @@ interface OrderConfig {
 let shopifyTokenCache: { token: string; expiresAt: number } | null = null;
 
 async function getShopifyAccessToken() {
-    // If we have a cached token that expires in more than 5 minutes, use it
+    // 1. Prefer static token if provided
+    if (SHOPIFY_ACCESS_TOKEN) return SHOPIFY_ACCESS_TOKEN;
+
+    // 2. Fallback to dynamic token from cache
     if (shopifyTokenCache && shopifyTokenCache.expiresAt > Date.now() + 5 * 60 * 1000) {
         return shopifyTokenCache.token;
+    }
+
+    // 3. Generate dynamic token via OAuth client_credentials
+    if (!SHOPIFY_CLIENT_ID || !SHOPIFY_CLIENT_SECRET) {
+        throw new Error('Missing Shopify Credentials. Please provide SHOPIFY_ACCESS_TOKEN or CLIENT_ID/SECRET.');
     }
 
     const res = await fetch(`https://${SHOPIFY_STORE}/admin/oauth/access_token`, {
@@ -47,17 +56,15 @@ async function getShopifyAccessToken() {
 
     if (!res.ok) {
         const text = await res.text();
-        console.error('[DEBUG] Shopify Token Error:', text);
+        console.error('Shopify Auth Error:', text);
         throw new Error(`Failed to generate Shopify access token: ${res.status} ${text}`);
     }
 
     const data = await res.json();
-    console.log('[DEBUG] Shopify Token Data:', JSON.stringify(data));
-    const expiresIn = data.expires_in || 3600; // default to 1 hour if not provided
+    const expiresIn = data.expires_in || 3600;
 
     shopifyTokenCache = {
         token: data.access_token,
-        // Calculate expiration timestamp (convert seconds to ms)
         expiresAt: Date.now() + expiresIn * 1000
     };
 
