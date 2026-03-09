@@ -213,6 +213,10 @@ export function buildCollarForHole(
     config: ConfigState,
     mat: THREE.Material
 ) {
+    // Only render collar when storm collar is enabled
+    const collar = getCollarConfig(hole.id as 'A' | 'B' | 'C', config);
+    if (!collar.stormCollar) return;
+
     const W = config.w * SC;
     const L = config.l * SC;
     const skH = config.sk * SC;
@@ -313,35 +317,23 @@ function buildSlopedTop(W: number, L: number, skH: number, _T: number, SLOPE: nu
     const hw = W / 2, hl = L / 2;
     const edgeY = skH;
 
-
-
-    const thickness = 0.05; // Metal sheet thickness
+    const thickness = 0.05;
     const pts = [
-        // Top surface vertices
-        0, edgeY + SLOPE, 0, // 0: Peak
-        -hw, edgeY, -hl,     // 1: Top Left
-        hw, edgeY, -hl,      // 2: Top Right
-        hw, edgeY, hl,       // 3: Bottom Right
-        -hw, edgeY, hl,      // 4: Bottom Left
-        // Bottom surface vertices (shifted down by thickness)
-        0, edgeY + SLOPE - thickness, 0, // 5: BPeak
-        -hw, edgeY - thickness, -hl,     // 6: BTL
-        hw, edgeY - thickness, -hl,      // 7: BTR
-        hw, edgeY - thickness, hl,       // 8: BBR
-        -hw, edgeY - thickness, hl       // 9: BBL
+        0, edgeY + SLOPE, 0,
+        -hw, edgeY, -hl,
+        hw, edgeY, -hl,
+        hw, edgeY, hl,
+        -hw, edgeY, hl,
+        0, edgeY + SLOPE - thickness, 0,
+        -hw, edgeY - thickness, -hl,
+        hw, edgeY - thickness, -hl,
+        hw, edgeY - thickness, hl,
+        -hw, edgeY - thickness, hl
     ];
 
     const indices = [
-        0, 2, 1, // Top Back
-        0, 3, 2, // Top Right
-        0, 4, 3, // Top Front
-        0, 1, 4, // Top Left
-        // Bottom faces
-        5, 6, 7, // Bottom Back
-        5, 7, 8, // Bottom Right
-        5, 8, 9, // Bottom Front
-        5, 9, 6, // Bottom Left
-        // Side walls (closing the thin edge)
+        0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 1, 4,
+        5, 6, 7, 5, 7, 8, 5, 8, 9, 5, 9, 6,
         1, 2, 7, 1, 7, 6,
         2, 3, 8, 2, 8, 7,
         3, 4, 9, 3, 9, 8,
@@ -355,31 +347,30 @@ function buildSlopedTop(W: number, L: number, skH: number, _T: number, SLOPE: nu
     topGeo.computeVertexNormals();
 
     const baseMat = mat.clone();
-    baseMat.side = THREE.DoubleSide; // Safe rendering for CSG output
+    baseMat.side = THREE.DoubleSide;
 
-    console.time('  [Geometry] CSG fromMesh (Top)');
+    console.time('[CSG] fromMesh (roof)');
     let csgTop = CSG.fromMesh(new THREE.Mesh(topGeo, baseMat));
-    console.timeEnd('  [Geometry] CSG fromMesh (Top)');
+    console.timeEnd('[CSG] fromMesh (roof)');
 
     for (const h of holes) {
         if (h.r > 0) {
-            // Cut hole. Make cylinder taller than roof height to ensure full cut
             const cylH = SLOPE + 10;
-            const cylGeo = new THREE.CylinderGeometry(h.r, h.r, cylH, 32); 
+            const cylGeo = new THREE.CylinderGeometry(h.r, h.r, cylH, 32);
             const cylMesh = new THREE.Mesh(cylGeo);
             cylMesh.position.set(h.wx, edgeY + SLOPE / 2, h.wz);
             cylMesh.updateMatrixWorld();
 
-            console.time(`  [Geometry] CSG Subtract Hole ${h.id}`);
+            console.time(`[CSG] subtract hole ${h.id}`);
             const csgHole = CSG.fromMesh(cylMesh);
             csgTop = csgTop.subtract(csgHole);
-            console.timeEnd(`  [Geometry] CSG Subtract Hole ${h.id}`);
+            console.timeEnd(`[CSG] subtract hole ${h.id}`);
         }
     }
 
-    console.time('  [Geometry] CSG toMesh (Final)');
+    console.time('[CSG] toMesh (final)');
     const finalTopMesh = CSG.toMesh(csgTop, new THREE.Matrix4(), baseMat);
-    console.timeEnd('  [Geometry] CSG toMesh (Final)');
+    console.timeEnd('[CSG] toMesh (final)');
     finalTopMesh.castShadow = true;
     finalTopMesh.receiveShadow = true;
     grp.add(finalTopMesh);

@@ -1478,6 +1478,18 @@
         top: 10px !important;
         left: 10px !important;
         gap: 4px !important;
+        flex-wrap: wrap !important;
+        width: 92px !important;
+    }
+
+    .chase-configurator-root .vp-move-holes {
+        order: 10 !important;
+        width: 92px !important;
+        padding: 0 !important;
+        font-size: 10px !important;
+        justify-content: center !important;
+        white-space: nowrap !important;
+        gap: 3px !important;
     }
 
     .chase-configurator-root .vp-btn {
