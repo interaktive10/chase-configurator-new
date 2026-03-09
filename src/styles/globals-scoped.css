@@ -176,6 +176,11 @@
     z-index: 5 !important;
 }
 
+.chase-configurator-root .vp-group {
+    display: flex !important;
+    gap: 5px !important;
+}
+
 .chase-configurator-root .vp-btn {
     width: 32px !important;
     height: 32px !important;
@@ -1477,7 +1482,9 @@
     .chase-configurator-root .viewport-controls {
         top: 10px !important;
         left: 10px !important;
-        gap: 4px !important;
+        gap: 6px !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
     }
 
     .chase-configurator-root .vp-btn {
