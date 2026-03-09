@@ -1479,7 +1479,15 @@
     .chase-configurator-root .viewport-controls {
         top: 10px !important;
         left: 10px !important;
-        gap: 4px !important;
+        gap: 6px !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-start !important;
+    }
+
+    .chase-configurator-root .vp-btn-move {
+        flex-basis: 100% !important;
+        justify-content: center !important;
     }
 
     .chase-configurator-root .vp-btn {

@@ -206,7 +206,7 @@ export default function App({ productId, variantId }: AppProps = {}) {
             <button className="vp-btn" title="Front" onClick={() => cameraActions.front()}>◻</button>
             {config.holes > 0 && (
               <button 
-                className="vp-btn" 
+                className="vp-btn vp-btn-move" 
                 title={config.moveHolesMode ? 'Done Moving Holes' : 'Move Holes'}
                 style={{ 
                   width: 'auto', padding: '0 12px', gap: '6px', fontWeight: 600, fontSize: '12px',
