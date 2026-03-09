@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useConfigStore } from '../../store/configStore';
+import { InfoTooltip } from './InfoTooltip';
 
 interface DimProps {
   configKey: 'w' | 'l' | 'sk';
   label: string;
   unit: string;
   max: number;
+  tooltip?: string;
 }
 
-function DimInput({ configKey, label, unit, max }: DimProps) {
+function DimInput({ configKey, label, unit, max, tooltip }: DimProps) {
   const config = useConfigStore(s => s);
   const committed = config[configKey] as number;
   const [inputVal, setInputVal] = useState(committed.toString());
@@ -39,7 +41,7 @@ function DimInput({ configKey, label, unit, max }: DimProps) {
   function commit() {
     setFocused(false);
     let raw = parseFloat(inputVal) || 0;
-    raw = Math.round(raw * 8) / 8; // snap to eighths
+    raw = Math.ceil(raw * 8) / 8; // snap to eighths (always round up)
     const clamped = Math.max(getDynamicMin(), Math.min(max, raw));
     setInputVal(clamped.toString());
     config.set({ [configKey]: clamped });
@@ -47,7 +49,10 @@ function DimInput({ configKey, label, unit, max }: DimProps) {
 
   return (
     <div className="field">
-      <label>{label} <span className="unit">({unit})</span></label>
+      <label>
+        {label} <span className="unit">({unit})</span>
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </label>
       <input
         type="number"
         value={inputVal}
@@ -65,9 +70,27 @@ function DimInput({ configKey, label, unit, max }: DimProps) {
 export function DimensionFields() {
   return (
     <div className="field-row-3">
-      <DimInput configKey="w" label="Width" unit="in" max={60} />
-      <DimInput configKey="l" label="Length" unit="in" max={120} />
-      <DimInput configKey="sk" label="Skirt" unit="in" max={12} />
+      <DimInput 
+        configKey="w" 
+        label="Width" 
+        unit="in" 
+        max={60} 
+        tooltip="Measure the outside width of your chase opening from edge to edge. Add ¼″ for proper fitment."
+      />
+      <DimInput 
+        configKey="l" 
+        label="Length" 
+        unit="in" 
+        max={120} 
+        tooltip="Measure the outside length of your chase opening from edge to edge. Add ¼″ for proper fitment."
+      />
+      <DimInput 
+        configKey="sk" 
+        label="Skirt" 
+        unit="in" 
+        max={12} 
+        tooltip="The skirt wraps down over the sides of the chase. Standard is 2″–3″. Use 6″+ for added wind resistance."
+      />
     </div>
   );
 }

@@ -15,7 +15,7 @@ export function bindCameraActions(camera: THREE.Camera, controls: any) {
   };
   cameraActions.top = () => {
     controls.target.set(0, 0.04, 0);
-    camera.position.set(0, 4, 0.01);
+    camera.position.set(0.01, 4, 0);
     controls.update();
   };
   cameraActions.front = () => {

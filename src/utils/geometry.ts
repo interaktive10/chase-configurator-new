@@ -3,6 +3,7 @@ import { CSG } from 'three-csg-ts';
 import type { ConfigState, CollarState } from '../store/configStore';
 
 export const SC = 0.02; // world units per inch
+export const MIN_GAP_INCHES = 1; // minimum 1 inch gap between holes
 
 export function mkMat(
     mat: 'galvanized' | 'copper',
@@ -37,7 +38,7 @@ export function holeWorld(id: 'A' | 'B' | 'C', config: ConfigState): { wx: numbe
     const collar = getCollarConfig(id, config);
     const r = holeR(id, config);
     const h = colH(id, config);
-    const MIN_GAP = 1 * SC; // 1 inch minimum gap between holes
+    const MIN_GAP = MIN_GAP_INCHES * SC; // 1 inch minimum gap between holes
 
     if (collar.centered) {
         if (config.holes === 1) return { wx: 0, wz: 0, r, h, id };
@@ -74,12 +75,68 @@ export function holeWorld(id: 'A' | 'B' | 'C', config: ConfigState): { wx: numbe
     return { wx: cx, wz: cz, r, h, id };
 }
 
-export function buildScene(grp: THREE.Group, config: ConfigState) {
+export function clampDragToOffsets(id: 'A' | 'B' | 'C', cx: number, cz: number, config: ConfigState) {
+    const collar = id === 'A' ? config.collarA : id === 'B' ? config.collarB : config.collarC;
+    const r = (collar.dia / 2) * SC;
+    
+    // Other holes to check collisions against
+    const otherIds: ('A'|'B'|'C')[] = [];
+    if (config.holes >= 1 && id !== 'A') otherIds.push('A');
+    if (config.holes >= 2 && id !== 'B') otherIds.push('B');
+    if (config.holes === 3 && id !== 'C') otherIds.push('C');
+
+    // Prevent passing cover boundaries
+    // At wx = max Right, offset1 = 0 -> cx = w/2*SC - r
+    // At wx = max Left, offset1 = max -> cx = -w/2*SC + r
+    const maxCx = (config.w / 2) * SC - r;
+    const minCx = (-config.w / 2) * SC + r;
+    const maxCz = (config.l / 2) * SC - r;
+    const minCz = (-config.l / 2) * SC + r;
+    
+    let safeCx = Math.max(minCx, Math.min(maxCx, cx));
+    let safeCz = Math.max(minCz, Math.min(maxCz, cz));
+
+    // Collision against other holes
+    for (const otherId of otherIds) {
+        const other = holeWorld(otherId, config);
+        const dx = safeCx - other.wx;
+        const dz = safeCz - other.wz;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        const minDist = r + other.r + MIN_GAP_INCHES * SC;
+
+        if (dist < minDist && dist > 0.001) {
+            // Push back along collision normal
+            const scale = minDist / dist;
+            safeCx = other.wx + dx * scale;
+            safeCz = other.wz + dz * scale;
+            // Re-clamp to boundaries just in case push-back pushed us off cover
+            safeCx = Math.max(minCx, Math.min(maxCx, safeCx));
+            safeCz = Math.max(minCz, Math.min(maxCz, safeCz));
+        }
+    }
+
+    // Convert safe local coordinates back to offsets in inches
+    // cx = (w/2 - offset1) * SC - r  => offset1 = w/2 - (cx + r)/SC
+    // cz = (l/2 - offset2) * SC - r  => offset2 = l/2 - (cz + r)/SC
+    let offset1 = config.w / 2 - (safeCx + r) / SC;
+    let offset2 = config.l / 2 - (safeCz + r) / SC;
+    
+    // Snap to 1/8" increments
+    offset1 = Math.max(0, Math.ceil(offset1 * 8) / 8);
+    offset2 = Math.max(0, Math.ceil(offset2 * 8) / 8);
+    
+    const offset3 = Math.max(0, config.w - collar.dia - offset1);
+    const offset4 = Math.max(0, config.l - collar.dia - offset2);
+
+    return { offset1, offset2, offset3, offset4 };
+}
+
+export function buildCoverWithoutCollars(grp: THREE.Group, config: ConfigState) {
     const W = config.w * SC;
     const L = config.l * SC;
     const skH = config.sk * SC;
     const T = (GAUGE_THICKNESS[config.gauge] || 0.0478) * SC;
-    const SLOPE = config.diag ? Math.sqrt(W * W + L * L) * 0.035 : 0;
+    const SLOPE = config.diag ? Math.sqrt(W * W + L * L) * 0.00875 : 0;
 
     const mat = mkMat(config.mat, config.pc, config.pcCol);
 
@@ -147,67 +204,82 @@ export function buildScene(grp: THREE.Group, config: ConfigState) {
         addDrip(L + T, W / 2, 0, -1, 0);
     }
 
-    // Collars — custom cylinder that follows roof slope at the bottom
-    const COLLAR_SEGS = 48;
-    for (const hole of holes) {
-        const localRoofY = config.diag ? SLOPE * (1 - Math.max(Math.abs(hole.wx / (W / 2)), Math.abs(hole.wz / (L / 2)))) : 0;
-        const topY = skH + localRoofY + hole.h;
-
-        // Build custom collar geometry with bottom vertices conforming to the roof
-        const colVerts: number[] = [];
-        const colIdx: number[] = [];
-
-        for (let i = 0; i < COLLAR_SEGS; i++) {
-            const a = (i / COLLAR_SEGS) * Math.PI * 2;
-            const px = hole.wx + Math.cos(a) * hole.r;
-            const pz = hole.wz + Math.sin(a) * hole.r;
-
-            // Bottom Y follows the roof surface at this point
-            let btmY: number;
-            if (config.diag) {
-                const npx = px / (W / 2);
-                const npz = pz / (L / 2);
-                const d = Math.max(Math.abs(npx), Math.abs(npz));
-                btmY = skH + SLOPE * (1 - d) - 0.002; // slight overlap into roof
-            } else {
-                btmY = skH - 0.002;
-            }
-
-            // Top vertex (even index: i*2)
-            colVerts.push(px, topY, pz);
-            // Bottom vertex (odd index: i*2+1)
-            colVerts.push(px, btmY, pz);
-        }
-
-        // Create quads between adjacent segments
-        for (let i = 0; i < COLLAR_SEGS; i++) {
-            const cur = i * 2;
-            const next = ((i + 1) % COLLAR_SEGS) * 2;
-            // Two triangles per quad
-            colIdx.push(cur, next, cur + 1);      // top-left triangle
-            colIdx.push(next, next + 1, cur + 1);  // bottom-right triangle
-        }
-
-        const cGeo = new THREE.BufferGeometry();
-        cGeo.setAttribute('position', new THREE.Float32BufferAttribute(colVerts, 3));
-        cGeo.setIndex(colIdx);
-        cGeo.computeVertexNormals();
-
-        const cMat = mat.clone();
-        cMat.side = THREE.DoubleSide;
-        const cMesh = new THREE.Mesh(cGeo, cMat);
-        cMesh.castShadow = true;
-        grp.add(cMesh);
-
-        const lo = hole.r + T;
-        const li = hole.r - T * 0.5;
-        const rG = new THREE.RingGeometry(li, lo, 32);
-        const rm = new THREE.Mesh(rG, mat.clone());
-        rm.rotation.x = -Math.PI / 2;
-        rm.position.set(hole.wx, topY + 0.001, hole.wz);
-        grp.add(rm);
-    }
+    // Note: Collars are now built separately to allow TransformControls
 }
+
+export function buildCollarForHole(
+    grp: THREE.Group,
+    hole: ReturnType<typeof holeWorld>,
+    config: ConfigState,
+    mat: THREE.Material
+) {
+    const W = config.w * SC;
+    const L = config.l * SC;
+    const skH = config.sk * SC;
+    const T = (GAUGE_THICKNESS[config.gauge] || 0.0478) * SC;
+    const SLOPE = config.diag ? Math.sqrt(W * W + L * L) * 0.00875 : 0;
+
+    const COLLAR_SEGS = 48;
+    const localRoofY = config.diag ? SLOPE * (1 - Math.max(Math.abs(hole.wx / (W / 2)), Math.abs(hole.wz / (L / 2)))) : 0;
+    const topY = skH + localRoofY + hole.h;
+
+    const colVerts: number[] = [];
+    const colIdx: number[] = [];
+
+    for (let i = 0; i < COLLAR_SEGS; i++) {
+        const a = (i / COLLAR_SEGS) * Math.PI * 2;
+        // Generate relative to hole center (0, 0) since TransformControls will move the group
+        const px = Math.cos(a) * hole.r;
+        const pz = Math.sin(a) * hole.r;
+        
+        // For the bottom Y, we must find the roof height at the ABSOLUTE position
+        const absPx = hole.wx + px;
+        const absPz = hole.wz + pz;
+
+        let btmY: number;
+        if (config.diag) {
+            const npx = absPx / (W / 2);
+            const npz = absPz / (L / 2);
+            const d = Math.max(Math.abs(npx), Math.abs(npz));
+            btmY = skH + SLOPE * (1 - d) - 0.002;
+        } else {
+            btmY = skH - 0.002;
+        }
+
+        colVerts.push(px, topY, pz);
+        colVerts.push(px, btmY, pz);
+    }
+
+    for (let i = 0; i < COLLAR_SEGS; i++) {
+        const cur = i * 2;
+        const next = ((i + 1) % COLLAR_SEGS) * 2;
+        colIdx.push(cur, next, cur + 1);
+        colIdx.push(next, next + 1, cur + 1);
+    }
+
+    const cGeo = new THREE.BufferGeometry();
+    cGeo.setAttribute('position', new THREE.Float32BufferAttribute(colVerts, 3));
+    cGeo.setIndex(colIdx);
+    cGeo.computeVertexNormals();
+
+    const cMat = mat.clone();
+    cMat.side = THREE.DoubleSide;
+    const cMesh = new THREE.Mesh(cGeo, cMat);
+    cMesh.castShadow = true;
+    grp.add(cMesh);
+
+    const lo = hole.r + T;
+    const li = hole.r - T * 0.5;
+    const rG = new THREE.RingGeometry(li, lo, 32);
+    const rm = new THREE.Mesh(rG, mat.clone());
+    rm.rotation.x = -Math.PI / 2;
+    rm.position.set(0, topY + 0.001, 0); // local to group
+    grp.add(rm);
+    
+    // Removal of visual flared storm collar per user request. 
+    // The collarHeight state still controls the main vertical collar height.
+}
+
 
 function buildFlatTop(W: number, L: number, skH: number, T: number, holes: any[], mat: THREE.Material, grp: THREE.Group) {
     const shape = new THREE.Shape();
@@ -285,25 +357,29 @@ function buildSlopedTop(W: number, L: number, skH: number, _T: number, SLOPE: nu
     const baseMat = mat.clone();
     baseMat.side = THREE.DoubleSide; // Safe rendering for CSG output
 
+    console.time('  [Geometry] CSG fromMesh (Top)');
     let csgTop = CSG.fromMesh(new THREE.Mesh(topGeo, baseMat));
+    console.timeEnd('  [Geometry] CSG fromMesh (Top)');
 
     for (const h of holes) {
         if (h.r > 0) {
             // Cut hole. Make cylinder taller than roof height to ensure full cut
             const cylH = SLOPE + 10;
-            const cylGeo = new THREE.CylinderGeometry(h.r, h.r, cylH, 64);
+            const cylGeo = new THREE.CylinderGeometry(h.r, h.r, cylH, 32); 
             const cylMesh = new THREE.Mesh(cylGeo);
-            // ThreeJS shapes use -z for "up" in 2D to 3D mapping, but h.wx and h.wz are world coords.
-            // Collar uses h.wz as its Z offset. Let's match collar's position exactly:
             cylMesh.position.set(h.wx, edgeY + SLOPE / 2, h.wz);
             cylMesh.updateMatrixWorld();
 
+            console.time(`  [Geometry] CSG Subtract Hole ${h.id}`);
             const csgHole = CSG.fromMesh(cylMesh);
             csgTop = csgTop.subtract(csgHole);
+            console.timeEnd(`  [Geometry] CSG Subtract Hole ${h.id}`);
         }
     }
 
+    console.time('  [Geometry] CSG toMesh (Final)');
     const finalTopMesh = CSG.toMesh(csgTop, new THREE.Matrix4(), baseMat);
+    console.timeEnd('  [Geometry] CSG toMesh (Final)');
     finalTopMesh.castShadow = true;
     finalTopMesh.receiveShadow = true;
     grp.add(finalTopMesh);

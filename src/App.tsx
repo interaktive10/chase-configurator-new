@@ -34,6 +34,12 @@ export default function App({ productId, variantId }: AppProps = {}) {
   const arViewerRef = useRef<any>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const qrUrlRef = useRef<HTMLDivElement>(null);
+  const [mountTime] = useState(() => performance.now());
+
+  useEffect(() => {
+    const end = performance.now();
+    console.log(`[ChaseConfigurator] Total App Mount Time: ${(end - mountTime).toFixed(2)}ms`);
+  }, []);
 
   // Hash restore on mount
   useEffect(() => {
@@ -53,6 +59,44 @@ export default function App({ productId, variantId }: AppProps = {}) {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  // Mobile adjustable layout state
+  const [mobilePreviewVH, setMobilePreviewVH] = useState(40);
+  const [dragVH, setDragVH] = useState<number | null>(null);
+  const isDraggingRef = useRef(false);
+
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!isDraggingRef.current) return;
+      e.preventDefault(); // Prevent scrolling while dragging
+
+      // Calculate new vh based on pointer Y
+      const newVH = (e.clientY / window.innerHeight) * 100;
+      
+      // Clamp between 30 and 70 limits per user request
+      const clampedVH = Math.max(30, Math.min(70, newVH));
+      setDragVH(clampedVH);
+    };
+
+    const handlePointerUp = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        setDragVH(prev => {
+          if (prev !== null) setMobilePreviewVH(prev);
+          return null;
+        });
+        document.body.style.userSelect = '';
+        document.body.style.touchAction = '';
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
   }, []);
 
   const isMobile = () =>
@@ -151,7 +195,7 @@ export default function App({ productId, variantId }: AppProps = {}) {
         <span className="header-meta">Custom Chase Covers</span>
       </header>
 
-      <div className="app-layout">
+      <div className="app-layout" style={{ '--mobile-preview-vh': `${mobilePreviewVH}vh` } as any}>
         <div className="viewport">
           <ChaseViewer />
 
@@ -160,11 +204,36 @@ export default function App({ productId, variantId }: AppProps = {}) {
             <button className="vp-btn" title="Reset" onClick={() => cameraActions.reset()}>⟳</button>
             <button className="vp-btn" title="Top" onClick={() => cameraActions.top()}>⊤</button>
             <button className="vp-btn" title="Front" onClick={() => cameraActions.front()}>◻</button>
+            {config.holes > 0 && (
+              <button 
+                className="vp-btn" 
+                title={config.moveHolesMode ? 'Done Moving Holes' : 'Move Holes'}
+                style={{ 
+                  width: 'auto', padding: '0 12px', gap: '6px', fontWeight: 600, fontSize: '12px',
+                  backgroundColor: config.moveHolesMode ? '#c9873b' : undefined, 
+                  color: config.moveHolesMode ? '#fff' : undefined,
+                  borderColor: config.moveHolesMode ? '#c9873b' : undefined,
+                  display: 'flex', alignItems: 'center'
+                }}
+                onClick={() => setConfig({ moveHolesMode: !config.moveHolesMode })}
+              >
+                <span>{config.moveHolesMode ? '✓' : '✥'}</span>
+                <span>{config.moveHolesMode ? 'Done Moving' : 'Move Holes'}</span>
+              </button>
+            )}
             <button className="ar-btn desktop-ar" onClick={launchAR}>View in AR</button>
           </div>
 
-          {/* Mobile AR button */}
-          <button className="ar-btn-mobile" onClick={launchAR}>View in AR</button>
+          {/* Mobile bottom-center controls */}
+          <div className="mobile-only-controls" style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, zIndex: 5 }}>
+            <button 
+              className="ar-btn-mobile" 
+              style={{ position: 'relative', bottom: 'auto', left: 'auto', transform: 'none', margin: 0 }}
+              onClick={launchAR}
+            >
+              View in AR
+            </button>
+          </div>
 
           {/* Dimension overlay top-right */}
           <div className="dim-overlay">
@@ -174,6 +243,26 @@ export default function App({ productId, variantId }: AppProps = {}) {
           </div>
 
           <div className="viewport-badge">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+        </div>
+
+        {/* Drag Indicator Overlay */}
+        {dragVH !== null && (
+          <div style={{
+            position: 'absolute', top: `${dragVH}vh`, left: 0, right: 0,
+            height: '2px', background: 'var(--accent)', zIndex: 9999, pointerEvents: 'none'
+          }} />
+        )}
+
+        {/* Mobile Adjustable Slider (only visible via CSS on mobile) */}
+        <div 
+          className="mobile-divider"
+          onPointerDown={() => {
+            isDraggingRef.current = true;
+            document.body.style.userSelect = 'none';
+            document.body.style.touchAction = 'none';
+          }}
+        >
+          <div className="mobile-divider-handle" />
         </div>
 
         <Sidebar
@@ -213,17 +302,20 @@ export default function App({ productId, variantId }: AppProps = {}) {
                 body: JSON.stringify(payload),
               });
 
-              if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-              const data = await res.json();
+              const data = await res.json().catch(() => null);
+              if (!res.ok) {
+                console.error('Create order API error:', res.status, data);
+                throw new Error(data?.error || `HTTP error! status: ${res.status}`);
+              }
 
-              if (data.checkout_url) {
+              if (data?.checkout_url) {
                 window.location.href = data.checkout_url;
               } else {
-                throw new Error(data.error || 'No checkout URL returned');
+                throw new Error(data?.error || 'No checkout URL returned');
               }
             } catch (err: any) {
               console.error('Add to cart error:', err);
-              alert('Failed to create order. Please try again.');
+              alert(`Failed to create order: ${err.message}`);
             }
           }}
         />

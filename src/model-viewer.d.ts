@@ -1,12 +1,6 @@
-import React from 'react';
+import type React from 'react';
 
-declare module 'qrious' {
-    export default class QRious {
-        constructor(options: any);
-    }
-}
-
-declare global {
+declare module 'react' {
     namespace JSX {
         interface IntrinsicElements {
             'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {

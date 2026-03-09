@@ -122,6 +122,31 @@ function formatFrac(n: number): string {
     return `${whole} ${eighths}/8`;
 }
 
+function buildHoleProperties(config: OrderConfig): { name: string; value: string }[] {
+    const props: { name: string; value: string }[] = [];
+    const collars = [
+        { label: 'H1', data: config.collarA },
+        { label: 'H2', data: config.collarB },
+        { label: 'H3', data: config.collarC },
+    ];
+    for (let i = 0; i < config.holes; i++) {
+        const c = collars[i];
+        if (!c.data) continue;
+        const prefix = config.holes === 1 ? '' : `${c.label} `;
+        props.push({ name: `${prefix}Diameter`, value: `${formatFrac(c.data.dia)}"` });
+        props.push({ name: `${prefix}Collar Height`, value: `${formatFrac(c.data.height)}"` });
+        if (c.data.centered) {
+            props.push({ name: `${prefix}Position`, value: 'Centered on cover' });
+        } else {
+            props.push({ name: `${prefix}A1 (Top)`, value: `${formatFrac(c.data.offset3)}"` });
+            props.push({ name: `${prefix}A2 (Right)`, value: `${formatFrac(c.data.offset4)}"` });
+            props.push({ name: `${prefix}A3 (Bottom)`, value: `${formatFrac(c.data.offset1)}"` });
+            props.push({ name: `${prefix}A4 (Left)`, value: `${formatFrac(c.data.offset2)}"` });
+        }
+    }
+    return props;
+}
+
 function buildLineItemDescription(config: OrderConfig): string {
     const lines: string[] = [];
     lines.push(`${formatFrac(config.w)}" W × ${formatFrac(config.l)}" L × ${formatFrac(config.sk)}" Skirt`);
@@ -198,13 +223,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                         properties: [
                             { name: 'Width', value: `${formatFrac(config.w)}"` },
                             { name: 'Length', value: `${formatFrac(config.l)}"` },
-                            { name: 'Skirt', value: `${formatFrac(config.sk)}"` },
+                            { name: 'Skirt Height', value: `${formatFrac(config.sk)}"` },
                             { name: 'Material', value: config.mat === 'copper' ? 'Copper' : 'Galvanized' },
                             { name: 'Gauge', value: `${config.gauge}ga` },
-                            { name: 'Holes', value: `${config.holes}` },
                             { name: 'Drip Edge', value: config.drip ? 'Yes' : 'No' },
                             { name: 'Diagonal Crease', value: config.diag ? 'Yes' : 'No' },
-                            ...(config.pc ? [{ name: 'Powder Coat', value: config.pcCol }] : []),
+                            ...(config.pc ? [{ name: 'Powder Coat Color', value: config.pcCol }] : []),
+                            { name: 'Holes', value: `${config.holes}` },
+                            ...buildHoleProperties(config),
+                            ...(config.notes ? [{ name: 'Special Notes', value: config.notes }] : []),
                             { name: '_config_json', value: JSON.stringify(config) },
                         ],
                     },
@@ -217,7 +244,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         console.log('[DEBUG] Sending request to Shopify...');
         const shopifyRes = await fetch(
-            `https://${SHOPIFY_STORE}/admin/api/2024-01/draft_orders.json`,
+            `https://${SHOPIFY_STORE}/admin/api/2025-10/draft_orders.json`,
             {
                 method: 'POST',
                 headers: {
@@ -230,8 +257,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (!shopifyRes.ok) {
             const errorText = await shopifyRes.text();
-            console.error('Shopify API error:', errorText);
-            return res.status(500).json({ error: 'Failed to create order' });
+            console.error('Shopify API error:', shopifyRes.status, errorText);
+            return res.status(502).json({ error: 'Failed to create order', shopifyStatus: shopifyRes.status, details: errorText });
         }
 
         const shopifyData = await shopifyRes.json();
@@ -239,7 +266,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         return res.status(200).json({ checkout_url: invoiceUrl });
     } catch (err: any) {
-        console.error('Create order error:', err);
-        return res.status(500).json({ error: err.message || 'Internal server error' });
+        console.error('Create order error:', err?.stack || err);
+        return res.status(500).json({ error: err.message || 'Internal server error', stack: process.env.NODE_ENV !== 'production' ? err?.stack : undefined });
     }
 }

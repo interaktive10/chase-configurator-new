@@ -1381,6 +1381,10 @@
     border-right: none !important;
 }
 
+.chase-configurator-root .mobile-divider {
+    display: none !important;
+}
+
 /* ===== Mobile Responsive ===== */
 @media (max-width: 900px) {
     .chase-configurator-root header {
@@ -1399,9 +1403,57 @@
 
     .chase-configurator-root .viewport {
         flex: none !important;
-        height: 50vh !important;
-        height: 50dvh !important;
+        height: var(--mobile-preview-vh, 40vh) !important;
         min-height: 0 !important;
+    }
+
+    .chase-configurator-root .mobile-divider {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        height: 0 !important;
+        position: relative !important;
+        z-index: 20 !important;
+        overflow: visible !important;
+    }
+
+    .chase-configurator-root .mobile-divider-handle {
+        position: absolute !important;
+        top: -12px !important;
+        width: 38px !important;
+        height: 24px !important;
+        background: var(--surface) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 12px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        align-items: center !important;
+        gap: 3px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08) !important;
+        cursor: ns-resize !important;
+        touch-action: none !important;
+        transition: background 0.2s !important;
+    }
+    
+    .chase-configurator-root .mobile-divider-handle::before,
+    .chase-configurator-root .mobile-divider-handle::after {
+        content: "" !important;
+        display: block !important;
+        width: 16px !important;
+        height: 2px !important;
+        background: #a9a297 !important;
+        border-radius: 2px !important;
+        transition: background 0.2s !important;
+    }
+    
+    .chase-configurator-root .mobile-divider:active .mobile-divider-handle {
+        background: #f0ebe2 !important;
+    }
+
+    .chase-configurator-root .mobile-divider:active .mobile-divider-handle::before,
+    .chase-configurator-root .mobile-divider:active .mobile-divider-handle::after {
+        background: var(--accent) !important;
     }
 
     .chase-configurator-root .sidebar {
@@ -1490,6 +1542,110 @@
         max-width: none !important;
         border-radius: 0 !important;
     }
+}
+
+/* ===== Info Tooltips ===== */
+.chase-configurator-root .info-tooltip-container {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
+    margin-left: 6px !important;
+    vertical-align: middle !important;
+}
+
+.chase-configurator-root .info-icon {
+    width: 15px !important;
+    height: 15px !important;
+    border-radius: 50% !important;
+    background: var(--primary) !important;
+    color: #fff !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: help !important;
+    font-family: var(--sans) !important;
+    transition: background 0.2s !important;
+    line-height: normal !important;
+    font-style: italic !important;
+}
+
+.chase-configurator-root .info-tooltip-container:hover .info-icon,
+.chase-configurator-root .info-tooltip-container:active .info-icon,
+.chase-configurator-root .info-tooltip-container:focus .info-icon {
+    background: var(--primary-hover) !important;
+}
+
+.chase-configurator-root .info-popover {
+    position: absolute !important;
+    bottom: calc(100% + 8px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 260px !important;
+    background: #fff !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    padding: 12px 14px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    z-index: 100 !important;
+    font-family: var(--sans) !important;
+    color: var(--text) !important;
+    font-size: 12.5px !important;
+    line-height: 1.4 !important;
+    pointer-events: none !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    font-weight: 400 !important;
+    text-align: left !important;
+    white-space: normal !important;
+}
+
+/* Little triangle pointer */
+.chase-configurator-root .info-popover::after {
+    content: '' !important;
+    position: absolute !important;
+    top: 100% !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    border-width: 6px !important;
+    border-style: solid !important;
+    border-color: #fff transparent transparent transparent !important;
+    z-index: 2 !important;
+}
+
+.chase-configurator-root .info-popover::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 100% !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    border-width: 7px !important;
+    border-style: solid !important;
+    border-color: var(--border) transparent transparent transparent !important;
+    z-index: 1 !important;
+}
+
+.chase-configurator-root .info-title {
+    font-weight: 600 !important;
+    margin-bottom: 6px !important;
+    color: var(--text) !important;
+    font-size: 13.5px !important;
+}
+
+.chase-configurator-root .info-content p {
+    margin-bottom: 6px !important;
+}
+.chase-configurator-root .info-content p:last-child {
+    margin-bottom: 0 !important;
+}
+.chase-configurator-root .info-content em {
+    font-style: italic !important;
+    color: var(--text-muted) !important;
+    font-size: 11.5px !important;
+    display: block !important;
+    margin-top: 6px !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

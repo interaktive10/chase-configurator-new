@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useConfigStore } from '../../store/configStore';
 import type { CollarState } from '../../store/configStore';
 import { holeWorld, SC } from '../../utils/geometry';
+import { InfoTooltip } from './InfoTooltip';
 
 interface Props { id: 'A' | 'B' | 'C'; label: string; }
 
-function CollarInput({ label, value, min, max, onCommit }: { label: string; value: number; min: number; max: number; onCommit: (v: number) => void }) {
+function CollarInput({ label, value, min, max, onCommit, tooltip }: { label: React.ReactNode; value: number; min: number; max: number; onCommit: (v: number) => void; tooltip?: string }) {
   const [inputVal, setInputVal] = useState(value.toString());
   const [focused, setFocused] = useState(false);
 
@@ -14,7 +15,7 @@ function CollarInput({ label, value, min, max, onCommit }: { label: string; valu
   function commit() {
     setFocused(false);
     let v = parseFloat(inputVal) || min;
-    v = Math.round(v * 8) / 8;
+    v = Math.ceil(v * 8) / 8;
     v = Math.max(min, Math.min(max, v));
     setInputVal(v.toString());
     onCommit(v);
@@ -22,7 +23,10 @@ function CollarInput({ label, value, min, max, onCommit }: { label: string; valu
 
   return (
     <div className="field">
-      <label>{label}</label>
+      <label style={{ display: 'flex', alignItems: 'center' }}>
+        {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </label>
       <input
         type="number"
         value={inputVal}
@@ -109,18 +113,18 @@ function clampForCollision(
       // Convert safe position back to offset
       if (offsetKey === 'offset1') {
         const safeOffset1 = config.w / 2 - myR - safeCx;
-        proposedVal = Math.max(0, Math.round(safeOffset1 * 8) / 8);
+        proposedVal = Math.max(0, Math.ceil(safeOffset1 * 8) / 8);
       } else if (offsetKey === 'offset3') {
         const safeOffset1 = config.w / 2 - myR - safeCx;
         const safeOffset3 = config.w - collar.dia - safeOffset1;
-        proposedVal = Math.max(0, Math.round(safeOffset3 * 8) / 8);
+        proposedVal = Math.max(0, Math.ceil(safeOffset3 * 8) / 8);
       } else if (offsetKey === 'offset2') {
         const safeOffset2 = config.l / 2 - myR - safeCz;
-        proposedVal = Math.max(0, Math.round(safeOffset2 * 8) / 8);
+        proposedVal = Math.max(0, Math.ceil(safeOffset2 * 8) / 8);
       } else if (offsetKey === 'offset4') {
         const safeOffset2 = config.l / 2 - myR - safeCz;
         const safeOffset4 = config.l - collar.dia - safeOffset2;
-        proposedVal = Math.max(0, Math.round(safeOffset4 * 8) / 8);
+        proposedVal = Math.max(0, Math.ceil(safeOffset4 * 8) / 8);
       }
     }
   }
@@ -142,7 +146,7 @@ export function CollarGroup({ id, label }: Props) {
     if (!newCentered) {
       const hole = holeWorld(id, config);
       const w = config.w, l = config.l, dia = collar.dia;
-      const r8 = (v: number) => Math.max(0, Math.round(v * 8) / 8);
+      const r8 = (v: number) => Math.max(0, Math.ceil(v * 8) / 8);
       setCollar(id, {
         centered: false,
         offset1: r8(w / 2 - dia / 2 - hole.wx / SC),
@@ -161,7 +165,7 @@ export function CollarGroup({ id, label }: Props) {
     } else {
       const deltaDia = newDia - collar.dia;
       const halfDelta = deltaDia / 2;
-      const r8 = (v: number) => Math.max(0, Math.round(v * 8) / 8);
+      const r8 = (v: number) => Math.max(0, Math.ceil(v * 8) / 8);
       setCollar(id, {
         dia: newDia,
         offset1: r8(collar.offset1 - halfDelta),
@@ -197,13 +201,14 @@ export function CollarGroup({ id, label }: Props) {
     <div className="collar-group">
       <div className="collar-group-title">{label}</div>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <label className="centered-check">
+        <label className="centered-check" style={{ display: 'flex', alignItems: 'center' }}>
           <input
             type="checkbox"
             checked={collar.centered}
             onChange={e => handleCenteredChange(e.target.checked)}
           />
           Centered on Cover
+          <InfoTooltip text="When centered, the hole is automatically placed at the center of the cover. Uncheck to set custom offsets from each edge." />
         </label>
         <label className="centered-check">
           <input
@@ -213,14 +218,44 @@ export function CollarGroup({ id, label }: Props) {
           />
           Show Labels
         </label>
+        <label className="centered-check" style={{ display: 'flex', alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            checked={collar.stormCollar || false}
+            onChange={e => setCollar(id, { stormCollar: e.target.checked })}
+          />
+          Add Storm Collar
+          <InfoTooltip text="The storm collar diameter will be 1 inch smaller than the selected flue hole diameter." />
+        </label>
       </div>
       <div className="field-row">
-        <CollarInput label="Diameter (in)" value={collar.dia} min={3} max={maxDia} onCommit={handleDiaChange} />
-        <CollarInput label="Collar Height (in)" value={collar.height} min={1} max={52} onCommit={v => setCollar(id, { height: v })} />
+        <CollarInput 
+          label="Diameter (in)" 
+          value={collar.dia} 
+          min={3} 
+          max={maxDia} 
+          onCommit={handleDiaChange} 
+          tooltip="Measure the outside diameter of the flue pipe or liner where it exits the chase top."
+        />
+        {collar.stormCollar && (
+          <CollarInput 
+            label="Collar Height (in)" 
+            value={collar.height} 
+            min={1} 
+            max={52} 
+            onCommit={v => setCollar(id, { height: v })} 
+            tooltip="The collar is the vertical sleeve around the flue pipe. Taller collars provide more weather protection."
+          />
+        )}
       </div>
       {!collar.centered && (
         <div className="offset-grid">
-          <div className="field-row">
+          <div className="field-row" style={{ position: 'relative' }}>
+            <div style={{ position: 'absolute', right: '0', top: '-18px' }}>
+              <InfoTooltip 
+                text="The exact placement of the hole on the cover surface. Measure from the outside edge of the chimney structure to the edge of the pipe. Entering custom offsets allows you to match the exact position of existing pipes." 
+              />
+            </div>
             <CollarInput label={`${id}1 (Top edge → hole)`} value={collar.offset3} min={0} max={maxW}
               onCommit={commitTop} />
             <CollarInput label={`${id}3 (Bottom edge → hole)`} value={collar.offset1} min={0} max={maxW}

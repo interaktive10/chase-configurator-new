@@ -30,7 +30,7 @@ function getBuildConfig() {
       },
       outDir: 'dist-shopify',
       cssCodeSplit: false,
-      minify: 'esbuild',
+      minify: 'esbuild' as const,
       rollupOptions: {
         output: { inlineDynamicImports: true },
       },
@@ -71,5 +71,20 @@ export default defineConfig({
     }),
   },
   build: getBuildConfig(),
-  server: { port: 5173, host: true, open: true },
+  server: { 
+    port: 5173, 
+    host: true, 
+    open: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5173', // This is just a dummy, we need a real backend or mock it
+        bypass: (req, res) => {
+          if (req.url?.includes('/api/pricing')) {
+            // Locally, we should probably just return a static JSON or the real script logic
+            // For now, let's just avoid the 404/code-serving mess if possible.
+          }
+        }
+      }
+    }
+  },
 })

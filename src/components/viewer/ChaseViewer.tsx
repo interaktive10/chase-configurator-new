@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, useProgress } from '@react-three/drei';
+import { useConfigStore } from '../../store/configStore';
 import { ChaseModel } from './ChaseModel';
 import { DimensionOverlay } from './DimensionOverlay';
 import { bindCameraActions } from '../../utils/cameraRef';
@@ -61,6 +62,8 @@ function Loader() {
 }
 
 export function ChaseViewer() {
+  const orbitEnabled = useConfigStore(state => state.orbitEnabled);
+
   return (
     <>
       <Canvas
@@ -68,7 +71,7 @@ export function ChaseViewer() {
         camera={{ position: [1.5, 1.2, 1.5], fov: 45 }}
         style={{ width: '100%', height: '100%', display: 'block' }}
       >
-        <OrbitControls target={[0, 0.04, 0]} makeDefault minDistance={0.5} maxDistance={4.5} />
+        <OrbitControls enabled={orbitEnabled} target={[0, 0.04, 0]} makeDefault minDistance={0.5} maxDistance={4.5} />
         <CameraSync />
 
         <ambientLight intensity={0.7} />

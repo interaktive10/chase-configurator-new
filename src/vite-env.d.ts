@@ -5,8 +5,8 @@ declare module '*.css?inline' {
     export default css;
 }
 
-declare namespace JSX {
-    interface IntrinsicElements {
-        'model-viewer': any;
+declare module 'qrious' {
+    export default class QRious {
+        constructor(options: any);
     }
 }

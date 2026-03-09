@@ -5,10 +5,11 @@
 Integrate the chase cover 3D configurator into a Shopify store so that:
 1. The configurator IIFE is hosted on Vercel (instant updates on git push, no re-uploading to Shopify)
 2. Pricing constants are stored in a Google Sheet (editable without touching code)
-3. "Add to Cart" creates a Shopify Draft Order with the correct calculated price (tamper-proof)
+3. "Add to Cart" creates a Shopify Draft Order with the correct server-calculated price (tamper-proof)
 4. Customer is redirected to Shopify's native checkout
+5. The standalone configurator is also accessible at the Vercel URL (for testing / direct access)
 
-No iframe is used. The IIFE loads as a `<script>` tag directly on the Shopify page.
+No iframe is used. The IIFE loads as a `<script>` tag directly on the Shopify page inside a Shadow DOM for CSS isolation.
 
 ---
 
@@ -16,56 +17,90 @@ No iframe is used. The IIFE loads as a `<script>` tag directly on the Shopify pa
 
 ```
 Shopify Product Page
-  └─ <script src="https://chase-configurator.vercel.app/chase-configurator.iife.js">
-       │
-       ├─ On load: GET /api/pricing → returns pricing constants from Google Sheet (cached 5 min)
-       ├─ User configures → price updates in real-time using fetched constants
-       └─ "Add to Cart" → POST /api/create-order
-                             ├─ Re-fetches pricing constants from Google Sheet
-                             ├─ Recalculates price server-side (tamper-proof)
-                             ├─ Creates Shopify Draft Order via Admin API
-                             └─ Returns checkout URL → customer redirected
+  |
+  +-- <chase-configurator product-id="..." variant-id="...">
+  |     Renders inside Shadow DOM (CSS isolated from Shopify theme)
+  |
+  +-- <script src="https://your-app.vercel.app/chase-configurator.iife.js">
+        |
+        +-- On load: GET /api/pricing
+        |     -> Vercel serverless function
+        |     -> Fetches pricing from Google Sheets (cached 5 min)
+        |     -> Returns JSON pricing constants
+        |
+        +-- User configures cover -> price updates in real-time
+        |
+        +-- "Add to Cart" -> POST /api/create-order
+              -> Vercel serverless function
+              -> Re-fetches pricing from Google Sheets (tamper-proof)
+              -> Recalculates price server-side
+              -> Authenticates with Shopify (static token or OAuth)
+              -> Creates Shopify Draft Order via Admin API (2025-10)
+              -> Returns checkout URL -> customer redirected
+
+Vercel Deployment (https://your-app.vercel.app)
+  +-- /                             Standalone SPA (for testing / direct access)
+  +-- /chase-configurator.iife.js   IIFE bundle loaded by Shopify
+  +-- /api/pricing                  Serverless: Google Sheets -> JSON
+  +-- /api/create-order             Serverless: Config -> Shopify Draft Order
 ```
 
 ---
 
 ## Prerequisites
 
-### 1. Shopify Admin API Access Token
+### 1. Shopify Admin API Access
 
-1. Go to Shopify Admin → Settings → Apps and sales channels → Develop apps
-2. Click "Create an app" → name it "Chase Configurator"
-3. Click "Configure Admin API scopes" → enable:
+You need **one** of the following authentication methods:
+
+#### Option A: Static Admin API Access Token (Recommended for Store Admin apps)
+
+1. Go to Shopify Admin > Settings > Apps and sales channels > Develop apps
+2. Click "Create an app" > name it "Chase Configurator"
+3. Click "Configure Admin API scopes" > enable:
    - `write_draft_orders`
    - `read_draft_orders`
-4. Click "Install app" → copy the **Admin API access token** (shown once — save it!)
-5. Note your store domain: `your-store.myshopify.com`
+4. Click "Install app" > copy the **Admin API access token** (`shpat_...`) — shown once, save it!
+5. Set this as the `SHOPIFY_ACCESS_TOKEN` environment variable
+
+#### Option B: OAuth Client Credentials (For Shopify App Dashboard apps)
+
+1. Go to the Shopify Partners Dashboard > Apps > your app
+2. Under "API credentials", copy:
+   - **Client ID** -> set as `SHOPIFY_CLIENT_ID`
+   - **Client Secret** -> set as `SHOPIFY_CLIENT_SECRET`
+3. The server will automatically obtain access tokens via OAuth `client_credentials` grant
+4. Tokens are cached in memory and refreshed before expiry
+
+**Auth priority in `api/create-order.ts`**:
+1. If `SHOPIFY_ACCESS_TOKEN` is set, use it (simplest)
+2. Otherwise, use `SHOPIFY_CLIENT_ID` + `SHOPIFY_CLIENT_SECRET` for dynamic OAuth tokens
 
 ### 2. Google Sheet for Pricing Config
 
 1. Create a new Google Sheet
-2. Set it up with this exact structure (Sheet name: `pricing`):
+2. In `Sheet1`, set up this structure (Column A = key, Column B = value):
 
-| Row | A (Key)          | B (Value) |
-|-----|------------------|-----------|
-| 1   | AREA_RATE        | 0.025     |
-| 2   | LINEAR_RATE      | 0.445     |
-| 3   | BASE_FIXED       | 178.03    |
-| 4   | HOLE_PRICE       | 25        |
-| 5   | POWDER_COAT      | 45        |
-| 6   | SKIRT_SURCHARGE  | 75        |
-| 7   | SKIRT_THRESHOLD  | 6         |
-| 8   | GAUGE_24         | 1.0       |
-| 9   | GAUGE_20         | 1.3       |
-| 10  | GAUGE_18         | 1.4       |
-| 11  | GAUGE_16         | 1.6       |
-| 12  | GAUGE_14         | 1.8       |
-| 13  | GAUGE_12         | 2.7       |
-| 14  | GAUGE_10         | 3.4       |
-| 15  | MAT_galvanized   | 1.0       |
-| 16  | MAT_copper       | 3.0       |
+| Row | A (Key) | B (Value) |
+|-----|---------|-----------|
+| 1 | AREA_RATE | 0.025 |
+| 2 | LINEAR_RATE | 0.445 |
+| 3 | BASE_FIXED | 178.03 |
+| 4 | HOLE_PRICE | 25 |
+| 5 | POWDER_COAT | 45 |
+| 6 | SKIRT_SURCHARGE | 75 |
+| 7 | SKIRT_THRESHOLD | 6 |
+| 8 | GAUGE_24 | 1.0 |
+| 9 | GAUGE_20 | 1.3 |
+| 10 | GAUGE_18 | 1.4 |
+| 11 | GAUGE_16 | 1.6 |
+| 12 | GAUGE_14 | 1.8 |
+| 13 | GAUGE_12 | 2.7 |
+| 14 | GAUGE_10 | 3.4 |
+| 15 | MAT_galvanized | 1.0 |
+| 16 | MAT_copper | 3.0 |
 
-3. Click File → Share → "Anyone with the link" → set to **Viewer**
+3. Click File > Share > "Anyone with the link" > set to **Viewer**
 4. Copy the Sheet ID from the URL: `https://docs.google.com/spreadsheets/d/SHEET_ID_HERE/edit`
 
 ### 3. Google Sheets API Key
@@ -73,581 +108,387 @@ Shopify Product Page
 1. Go to https://console.cloud.google.com/
 2. Create a new project (or use existing)
 3. Enable "Google Sheets API"
-4. Go to Credentials → Create Credentials → API Key
-5. (Optional but recommended) Restrict the key to "Google Sheets API" only
+4. Go to Credentials > Create Credentials > API Key
+5. (Recommended) Restrict the key to "Google Sheets API" only
 6. Copy the API key
 
 ### 4. Vercel Account
 
-1. Sign up at https://vercel.com (free tier is fine)
+1. Sign up at https://vercel.com (free tier works)
 2. Install Vercel CLI: `npm i -g vercel`
+3. Link the project: `cd chase-configurator-new && vercel link`
 
 ---
 
-## Project Structure
+## Environment Variables
 
-Add these files to the existing `chase-configurator-new` project:
+### Required Variables
 
-```
-chase-configurator-new/
-├── api/                          # Vercel serverless functions
-│   ├── pricing.ts                # GET /api/pricing — returns Google Sheet values
-│   └── create-order.ts           # POST /api/create-order — creates Draft Order
-├── public/                       # Static files served by Vercel
-│   └── (IIFE will be built here)
-├── vercel.json                   # Vercel config
-├── src/                          # Existing source code
-│   ├── config/pricing.ts         # Modified to fetch from API
-│   └── ...
-└── ...
-```
+Set these in the **Vercel Dashboard** (Settings > Environment Variables) and in `.env` for local development:
 
----
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `GOOGLE_SHEET_ID` | Yes | Google Sheet ID (from the URL) | `1L9qAQbB-5dU...` |
+| `GOOGLE_SHEETS_API_KEY` | Yes | Google Cloud API key | `AIzaSyA48c...` |
+| `SHOPIFY_STORE` | Yes | Shopify store domain | `your-store.myshopify.com` |
+| `SHOPIFY_ACCESS_TOKEN` | If using Option A | Static Admin API token | `shpat_abc123...` |
+| `SHOPIFY_CLIENT_ID` | If using Option B | Shopify App Client ID | `18e8d566e8...` |
+| `SHOPIFY_CLIENT_SECRET` | If using Option B | Shopify App Client Secret | `shpss_e733...` |
 
-## Step-by-Step Implementation
-
-### Step 1: Create `vercel.json`
-
-```json
-{
-  "buildCommand": "npm run build:shopify:vercel",
-  "outputDirectory": "public",
-  "headers": [
-    {
-      "source": "/chase-configurator.iife.js",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Cache-Control", "value": "public, max-age=60, s-maxage=300" }
-      ]
-    },
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
-      ]
-    }
-  ],
-  "rewrites": [
-    { "source": "/chase-configurator.iife.js", "destination": "/chase-configurator.iife.js" }
-  ]
-}
-```
-
-### Step 2: Create `api/pricing.ts`
-
-This serverless function fetches pricing constants from Google Sheets and caches them.
-
-```typescript
-// api/pricing.ts
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-const SHEET_ID = process.env.GOOGLE_SHEET_ID!;
-const API_KEY = process.env.GOOGLE_SHEETS_API_KEY!;
-const SHEET_NAME = 'pricing';
-
-// In-memory cache (persists across warm invocations)
-let cache: { data: any; ts: number } | null = null;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-async function fetchPricing() {
-  if (cache && Date.now() - cache.ts < CACHE_TTL) return cache.data;
-
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SHEET_NAME}!A1:B20?key=${API_KEY}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Google Sheets API error: ${res.status}`);
-  const json = await res.json();
-
-  const rows: [string, string][] = json.values || [];
-  const pricing: Record<string, number> = {};
-  const gaugeMult: Record<number, number> = {};
-  const materialMult: Record<string, number> = {};
-
-  for (const [key, value] of rows) {
-    const num = parseFloat(value);
-    if (key.startsWith('GAUGE_')) {
-      gaugeMult[parseInt(key.replace('GAUGE_', ''))] = num;
-    } else if (key.startsWith('MAT_')) {
-      materialMult[key.replace('MAT_', '')] = num;
-    } else {
-      pricing[key] = num;
-    }
-  }
-
-  const result = {
-    AREA_RATE: pricing.AREA_RATE ?? 0.025,
-    LINEAR_RATE: pricing.LINEAR_RATE ?? 0.445,
-    BASE_FIXED: pricing.BASE_FIXED ?? 178.03,
-    HOLE_PRICE: pricing.HOLE_PRICE ?? 25,
-    POWDER_COAT: pricing.POWDER_COAT ?? 45,
-    SKIRT_SURCHARGE: pricing.SKIRT_SURCHARGE ?? 75,
-    SKIRT_THRESHOLD: pricing.SKIRT_THRESHOLD ?? 6,
-    GAUGE_MULT: gaugeMult,
-    MATERIAL_MULT: materialMult,
-  };
-
-  cache = { data: result, ts: Date.now() };
-  return result;
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  try {
-    const pricing = await fetchPricing();
-    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300');
-    return res.status(200).json(pricing);
-  } catch (err: any) {
-    console.error('Pricing fetch error:', err);
-    return res.status(500).json({ error: 'Failed to fetch pricing' });
-  }
-}
-```
-
-### Step 3: Create `api/create-order.ts`
-
-This serverless function:
-1. Receives the full configuration from the client
-2. Re-fetches pricing from Google Sheets (server-side, tamper-proof)
-3. Recalculates the price
-4. Creates a Shopify Draft Order with the exact price
-5. Returns the checkout URL
-
-```typescript
-// api/create-order.ts
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-const SHOPIFY_STORE = process.env.SHOPIFY_STORE!;           // e.g. "your-store.myshopify.com"
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
-const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID!;
-const GOOGLE_SHEETS_API_KEY = process.env.GOOGLE_SHEETS_API_KEY!;
-
-interface OrderConfig {
-  w: number;
-  l: number;
-  sk: number;
-  drip: boolean;
-  diag: boolean;
-  mat: string;
-  gauge: number;
-  pc: boolean;
-  pcCol: string;
-  holes: number;
-  collarA?: { dia: number; height: number; centered: boolean; offset1: number; offset2: number; offset3: number; offset4: number };
-  collarB?: { dia: number; height: number; centered: boolean; offset1: number; offset2: number; offset3: number; offset4: number };
-  collarC?: { dia: number; height: number; centered: boolean; offset1: number; offset2: number; offset3: number; offset4: number };
-  quantity: number;
-  notes: string;
-}
-
-async function fetchPricingFromSheet() {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEET_ID}/values/pricing!A1:B20?key=${GOOGLE_SHEETS_API_KEY}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Google Sheets API error: ${res.status}`);
-  const json = await res.json();
-  const rows: [string, string][] = json.values || [];
-
-  const pricing: Record<string, number> = {};
-  const gaugeMult: Record<number, number> = {};
-  const materialMult: Record<string, number> = {};
-
-  for (const [key, value] of rows) {
-    const num = parseFloat(value);
-    if (key.startsWith('GAUGE_')) gaugeMult[parseInt(key.replace('GAUGE_', ''))] = num;
-    else if (key.startsWith('MAT_')) materialMult[key.replace('MAT_', '')] = num;
-    else pricing[key] = num;
-  }
-
-  return {
-    AREA_RATE: pricing.AREA_RATE ?? 0.025,
-    LINEAR_RATE: pricing.LINEAR_RATE ?? 0.445,
-    BASE_FIXED: pricing.BASE_FIXED ?? 178.03,
-    HOLE_PRICE: pricing.HOLE_PRICE ?? 25,
-    POWDER_COAT: pricing.POWDER_COAT ?? 45,
-    SKIRT_SURCHARGE: pricing.SKIRT_SURCHARGE ?? 75,
-    SKIRT_THRESHOLD: pricing.SKIRT_THRESHOLD ?? 6,
-    GAUGE_MULT: gaugeMult,
-    MATERIAL_MULT: materialMult,
-  };
-}
-
-function computePrice(config: OrderConfig, p: Awaited<ReturnType<typeof fetchPricingFromSheet>>): number {
-  const base = p.AREA_RATE * config.w * config.l + p.LINEAR_RATE * (config.w + config.l) + p.BASE_FIXED;
-  const subtotal = base
-    + config.holes * p.HOLE_PRICE
-    + (config.sk >= p.SKIRT_THRESHOLD ? p.SKIRT_SURCHARGE : 0)
-    + (config.pc ? p.POWDER_COAT : 0);
-  return subtotal * (p.GAUGE_MULT[config.gauge] || 1) * (p.MATERIAL_MULT[config.mat] || 1);
-}
-
-function formatFrac(n: number): string {
-  const whole = Math.floor(n);
-  const frac = n - whole;
-  const eighths = Math.round(frac * 8);
-  if (eighths === 0) return `${whole}`;
-  if (eighths === 4) return `${whole} 1/2`;
-  if (eighths === 2) return `${whole} 1/4`;
-  if (eighths === 6) return `${whole} 3/4`;
-  return `${whole} ${eighths}/8`;
-}
-
-function buildLineItemDescription(config: OrderConfig): string {
-  const lines: string[] = [];
-  lines.push(`${formatFrac(config.w)}" W × ${formatFrac(config.l)}" L × ${formatFrac(config.sk)}" Skirt`);
-  lines.push(`Material: ${config.mat === 'copper' ? 'Copper' : 'Galvanized'} | Gauge: ${config.gauge}ga`);
-  lines.push(`Drip Edge: ${config.drip ? 'Yes' : 'No'} | Diagonal Crease: ${config.diag ? 'Yes' : 'No'}`);
-  if (config.pc) lines.push(`Powder Coat: ${config.pcCol}`);
-
-  const collars = [
-    { label: 'H1', data: config.collarA },
-    { label: 'H2', data: config.collarB },
-    { label: 'H3', data: config.collarC },
-  ];
-  for (let i = 0; i < config.holes; i++) {
-    const c = collars[i];
-    if (c.data) {
-      let desc = `${c.label}: ⌀${formatFrac(c.data.dia)}" × ${formatFrac(c.data.height)}" tall`;
-      if (c.data.centered) {
-        desc += ' (centered)';
-      } else {
-        desc += ` [Top:${formatFrac(c.data.offset3)}" Right:${formatFrac(c.data.offset4)}" Bottom:${formatFrac(c.data.offset1)}" Left:${formatFrac(c.data.offset2)}"]`;
-      }
-      lines.push(desc);
-    }
-  }
-
-  if (config.notes) lines.push(`Notes: ${config.notes}`);
-  return lines.join('\n');
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  try {
-    const config: OrderConfig = req.body;
-
-    // Validate required fields
-    if (!config.w || !config.l || !config.sk || !config.mat || !config.gauge) {
-      return res.status(400).json({ error: 'Missing required configuration fields' });
-    }
-
-    // Fetch pricing from Google Sheet (server-side — tamper-proof)
-    const pricing = await fetchPricingFromSheet();
-
-    // Calculate price server-side
-    const unitPrice = computePrice(config, pricing);
-    const quantity = Math.max(1, Math.min(99, Math.round(config.quantity || 1)));
-
-    // Build human-readable description
-    const description = buildLineItemDescription(config);
-
-    // Create Shopify Draft Order via Admin API
-    const draftOrderPayload = {
-      draft_order: {
-        line_items: [
-          {
-            title: 'Custom Chase Cover',
-            price: unitPrice.toFixed(2),
-            quantity: quantity,
-            requires_shipping: true,
-            taxable: true,
-            properties: [
-              { name: 'Width', value: `${formatFrac(config.w)}"` },
-              { name: 'Length', value: `${formatFrac(config.l)}"` },
-              { name: 'Skirt', value: `${formatFrac(config.sk)}"` },
-              { name: 'Material', value: config.mat === 'copper' ? 'Copper' : 'Galvanized' },
-              { name: 'Gauge', value: `${config.gauge}ga` },
-              { name: 'Holes', value: `${config.holes}` },
-              { name: 'Drip Edge', value: config.drip ? 'Yes' : 'No' },
-              { name: 'Diagonal Crease', value: config.diag ? 'Yes' : 'No' },
-              ...(config.pc ? [{ name: 'Powder Coat', value: config.pcCol }] : []),
-              { name: '_config_json', value: JSON.stringify(config) },
-            ],
-          },
-        ],
-        note: description,
-        use_customer_default_address: true,
-      },
-    };
-
-    const shopifyRes = await fetch(
-      `https://${SHOPIFY_STORE}/admin/api/2024-01/draft_orders.json`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-        },
-        body: JSON.stringify(draftOrderPayload),
-      }
-    );
-
-    if (!shopifyRes.ok) {
-      const errorText = await shopifyRes.text();
-      console.error('Shopify API error:', errorText);
-      return res.status(500).json({ error: 'Failed to create order' });
-    }
-
-    const shopifyData = await shopifyRes.json();
-    const invoiceUrl = shopifyData.draft_order.invoice_url;
-
-    return res.status(200).json({ checkout_url: invoiceUrl });
-  } catch (err: any) {
-    console.error('Create order error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
-  }
-}
-```
-
-### Step 4: Add build script for Vercel
-
-In `package.json`, add this script:
-
-```json
-{
-  "scripts": {
-    "build:shopify:vercel": "BUILD_TARGET=shopify vite build --mode production && mkdir -p public && cp dist-shopify/chase-configurator.iife.js public/"
-  }
-}
-```
-
-### Step 5: Modify `src/config/pricing.ts` to support dynamic pricing
-
-Replace the contents of `src/config/pricing.ts` with:
-
-```typescript
-export interface PricingConstants {
-    AREA_RATE: number;
-    LINEAR_RATE: number;
-    BASE_FIXED: number;
-    HOLE_PRICE: number;
-    POWDER_COAT: number;
-    SKIRT_SURCHARGE: number;
-    SKIRT_THRESHOLD: number;
-    GAUGE_MULT: Record<number, number>;
-    MATERIAL_MULT: Record<string, number>;
-}
-
-// Default values (used as fallback and for local dev)
-export let PRICING: PricingConstants = {
-    AREA_RATE: 0.025,
-    LINEAR_RATE: 0.445,
-    BASE_FIXED: 178.03,
-    HOLE_PRICE: 25,
-    POWDER_COAT: 45,
-    SKIRT_SURCHARGE: 75,
-    SKIRT_THRESHOLD: 6,
-    GAUGE_MULT: {
-        24: 1.0, 20: 1.3, 18: 1.4, 16: 1.6, 14: 1.8, 12: 2.7, 10: 3.4,
-    },
-    MATERIAL_MULT: {
-        galvanized: 1.0, copper: 3.0,
-    }
-};
-
-let _loaded = false;
-const _listeners: Array<() => void> = [];
-
-export function onPricingLoaded(cb: () => void) {
-    if (_loaded) { cb(); return; }
-    _listeners.push(cb);
-}
-
-// Fetch pricing from the Vercel API (which reads from Google Sheets)
-// This is called once on app startup.
-// The API_BASE should be set in shopify-entry.tsx or detected automatically.
-export async function loadPricingFromAPI(apiBase: string) {
-    try {
-        const res = await fetch(`${apiBase}/api/pricing`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        PRICING = { ...PRICING, ...data };
-        console.log('[ChaseConfigurator] Pricing loaded from API');
-    } catch (err) {
-        console.warn('[ChaseConfigurator] Failed to fetch pricing from API, using defaults:', err);
-    }
-    _loaded = true;
-    _listeners.forEach(cb => cb());
-    _listeners.length = 0;
-}
-```
-
-### Step 6: Modify `src/shopify-entry.tsx`
-
-Add the pricing fetch call and the API base URL. Also update the "Add to Cart" flow.
-
-In `shopify-entry.tsx`, after the mount setup and before `ReactDOM.createRoot(root).render(...)`, add:
-
-```typescript
-import { loadPricingFromAPI } from './config/pricing';
-
-// Detect the API base URL from the script's own src attribute
-const currentScript = document.currentScript as HTMLScriptElement | null;
-const scriptSrc = currentScript?.src || '';
-const apiBase = scriptSrc ? new URL(scriptSrc).origin : window.location.origin;
-
-// Store API base globally so the Add to Cart handler can use it
-(window as any).__chaseApiBase = apiBase;
-
-// Fetch pricing from Google Sheets via Vercel API
-loadPricingFromAPI(apiBase);
-```
-
-### Step 7: Modify "Add to Cart" in `src/App.tsx`
-
-Replace the `onAddToCart` callback in App.tsx. Change the `onAddToCart` prop of `<Sidebar>`:
-
-```typescript
-onAddToCart={async () => {
-  const apiBase = (window as any).__chaseApiBase || '';
-  if (!apiBase) {
-    alert('Configuration error: API base not found');
-    return;
-  }
-
-  try {
-    // Show loading state (optional: add a loading state variable)
-    const payload = {
-      w: config.w, l: config.l, sk: config.sk,
-      drip: config.drip, diag: config.diag,
-      mat: config.mat, gauge: config.gauge,
-      pc: config.pc, pcCol: config.pcCol,
-      holes: config.holes,
-      collarA: config.holes >= 1 ? config.collarA : undefined,
-      collarB: config.holes >= 2 ? config.collarB : undefined,
-      collarC: config.holes >= 3 ? config.collarC : undefined,
-      quantity: config.quantity,
-      notes: config.notes,
-    };
-
-    const res = await fetch(`${apiBase}/api/create-order`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) throw new Error('Failed to create order');
-    const data = await res.json();
-
-    if (data.checkout_url) {
-      window.location.href = data.checkout_url;
-    } else {
-      throw new Error('No checkout URL returned');
-    }
-  } catch (err: any) {
-    console.error('Add to cart error:', err);
-    alert('Failed to add to cart. Please try again.');
-  }
-}}
-```
-
-### Step 8: Recalculate price when pricing loads
-
-In `src/store/configStore.ts`, after the store is created, add a listener that recalculates the price when remote pricing loads. Add this at the bottom of the file:
-
-```typescript
-import { onPricingLoaded } from '../config';
-
-onPricingLoaded(() => {
-  const state = useConfigStore.getState();
-  useConfigStore.setState({ price: computePrice(state) });
-});
-```
-
-### Step 9: Set Vercel Environment Variables
-
-Run these commands (or set them in the Vercel dashboard under Settings → Environment Variables):
+### Setting via CLI
 
 ```bash
 vercel env add GOOGLE_SHEET_ID        # paste your Google Sheet ID
 vercel env add GOOGLE_SHEETS_API_KEY  # paste your Google API key
 vercel env add SHOPIFY_STORE          # e.g. "your-store.myshopify.com"
-vercel env add SHOPIFY_ACCESS_TOKEN   # paste your Shopify Admin API token
+
+# Option A (static token):
+vercel env add SHOPIFY_ACCESS_TOKEN   # paste shpat_... token
+
+# Option B (OAuth):
+vercel env add SHOPIFY_CLIENT_ID      # paste client ID
+vercel env add SHOPIFY_CLIENT_SECRET  # paste client secret
 ```
 
-### Step 10: Deploy to Vercel
+### Local `.env` File
 
-```bash
-cd chase-configurator-new
-vercel --prod
+For local development, create a `.env` file in the project root:
+
+```env
+# Google Sheets
+GOOGLE_SHEET_ID=your-sheet-id-here
+GOOGLE_SHEETS_API_KEY=your-api-key-here
+
+# Shopify
+SHOPIFY_STORE=your-store.myshopify.com
+
+# Auth Option A (static token):
+SHOPIFY_ACCESS_TOKEN=shpat_your_token_here
+
+# Auth Option B (OAuth — use if no static token):
+# SHOPIFY_CLIENT_ID=your-client-id
+# SHOPIFY_CLIENT_SECRET=your-client-secret
 ```
 
-Note your deployment URL, e.g. `https://chase-configurator-abc123.vercel.app`
-
-### Step 11: Update Shopify Liquid Template
-
-In your Shopify theme, replace the current script tag with:
-
-```html
-<chase-configurator style="display:block;width:100%;height:800px;"></chase-configurator>
-<script src="https://chase-configurator-abc123.vercel.app/chase-configurator.iife.js"></script>
-```
-
-Now every time you push code changes to git, Vercel auto-deploys and Shopify always loads the latest version.
+> **Important**: The `.env` file is gitignored. Never commit secrets to the repository.
 
 ---
 
-## Google Sheet Editing Guide
+## Project Structure (Integration-Specific Files)
 
-To change pricing, just edit the Google Sheet values:
+```
+chase-configurator-new/
+├── api/                              # Vercel serverless functions (auto-detected)
+│   ├── pricing.ts                    # GET /api/pricing
+│   └── create-order.ts              # POST /api/create-order
+├── vercel.json                       # Vercel config (build, CORS, rewrites)
+├── src/
+│   ├── shopify-entry.tsx             # Shopify IIFE entry point (Shadow DOM)
+│   ├── main.tsx                      # Standalone SPA entry point
+│   ├── config/pricing.ts            # Client-side pricing (fetches from /api/pricing)
+│   └── styles/
+│       ├── globals.css               # CSS for standalone SPA
+│       └── globals-scoped.css        # CSS injected into Shadow DOM (Shopify)
+├── dist/                             # Vercel output dir (SPA + IIFE)
+└── dist-shopify/                     # Shopify IIFE build output
+```
 
-| To change... | Edit cell... |
-|---|---|
-| Base price formula rate | B1 (AREA_RATE) |
-| Per-inch rate | B2 (LINEAR_RATE) |
-| Fixed base price | B3 (BASE_FIXED) |
-| Price per hole | B4 (HOLE_PRICE) |
-| Powder coat surcharge | B5 (POWDER_COAT) |
-| Tall skirt surcharge | B6 (SKIRT_SURCHARGE) |
-| Skirt threshold (inches) | B7 (SKIRT_THRESHOLD) |
-| Gauge multipliers | B8-B14 |
-| Material multipliers | B15-B16 |
+---
 
-Changes take effect within **5 minutes** (server cache TTL). No code changes or redeployment needed.
+## Build & Deploy
+
+### Build Commands
+
+```bash
+# Local development (standalone SPA)
+npm run dev
+
+# Build standalone SPA only
+npm run build
+
+# Build Shopify IIFE only
+npm run build:shopify
+
+# Build everything for Vercel (SPA + IIFE + copies IIFE into dist/)
+npm run build:vercel
+```
+
+### How `build:vercel` Works
+
+```bash
+npm run build              # Standard Vite SPA build -> dist/
+npm run build:shopify      # IIFE build (BUILD_TARGET=shopify) -> dist-shopify/
+cp dist-shopify/chase-configurator.iife.js dist/   # Copy IIFE into dist/
+```
+
+Vercel then serves `dist/` as static files and auto-deploys `api/*.ts` as serverless functions.
+
+### Deploy to Vercel
+
+```bash
+# First time:
+vercel link
+vercel --prod
+
+# Subsequent deploys (or just push to git if GitHub integration is set up):
+git push origin main   # Auto-deploys via Vercel GitHub integration
+```
+
+### Verify Deployment
+
+After deploying, verify these URLs work:
+
+| URL | Expected |
+|-----|----------|
+| `https://your-app.vercel.app/` | Standalone configurator SPA |
+| `https://your-app.vercel.app/chase-configurator.iife.js` | JavaScript IIFE bundle |
+| `https://your-app.vercel.app/api/pricing` | JSON with pricing constants |
+
+---
+
+## Shopify Theme Setup
+
+### Basic Setup
+
+Add this to your Shopify product page template (Liquid):
+
+```html
+<chase-configurator style="display:block;width:100%;height:800px;"></chase-configurator>
+<script src="https://your-app.vercel.app/chase-configurator.iife.js"></script>
+```
+
+### With Product/Variant ID Linking
+
+To link Draft Orders to a Shopify product (so they appear properly in the catalog):
+
+```html
+<chase-configurator
+  product-id="{{ product.id }}"
+  variant-id="{{ product.variants.first.id }}"
+  style="display:block;width:100%;height:800px;">
+</chase-configurator>
+<script src="https://your-app.vercel.app/chase-configurator.iife.js"></script>
+```
+
+When `variant-id` is provided, the Draft Order line item includes `variant_id`, linking it to that specific variant. If only `product-id` is provided, it uses `product_id` instead.
+
+### Alternative Mount Point
+
+If you can't use a custom element, use a div with a specific ID:
+
+```html
+<div id="chase-configurator-mount" style="width:100%;height:800px;"></div>
+<script src="https://your-app.vercel.app/chase-configurator.iife.js"></script>
+```
+
+### What the IIFE Does on Load
+
+1. Injects Google Fonts (`DM Sans`, `JetBrains Mono`) into `<head>`
+2. Injects QRious library (for QR codes) into `<head>`
+3. Finds `<chase-configurator>` or `#chase-configurator-mount`
+4. Attaches a **Shadow DOM** to the mount element
+5. Injects scoped CSS (`globals-scoped.css`) into the shadow root
+6. Creates a light-DOM container (`#chase-configurator-portal`) for AR/QR overlays
+7. Detects the API base URL from the script's own `src` attribute
+8. Reads `product-id` and `variant-id` attributes
+9. Fetches pricing from `/api/pricing`
+10. Renders the React app into the shadow root
+
+---
+
+## API Reference
+
+### `GET /api/pricing`
+
+Returns current pricing constants from the Google Sheet.
+
+**Response** (200):
+```json
+{
+  "AREA_RATE": 0.025,
+  "LINEAR_RATE": 0.445,
+  "BASE_FIXED": 178.03,
+  "HOLE_PRICE": 25,
+  "POWDER_COAT": 45,
+  "SKIRT_SURCHARGE": 75,
+  "SKIRT_THRESHOLD": 6,
+  "GAUGE_MULT": { "24": 1, "20": 1.3, "18": 1.4, "16": 1.6, "14": 1.8, "12": 2.7, "10": 3.4 },
+  "MATERIAL_MULT": { "galvanized": 1, "copper": 3 }
+}
+```
+
+**Caching**: Server-side in-memory cache (5 min TTL) + HTTP `Cache-Control: public, max-age=60, s-maxage=300`.
+
+### `POST /api/create-order`
+
+Creates a Shopify Draft Order from a configuration.
+
+**Request body**:
+```json
+{
+  "w": 48,
+  "l": 60,
+  "sk": 3,
+  "drip": true,
+  "diag": true,
+  "mat": "galvanized",
+  "gauge": 24,
+  "pc": false,
+  "pcCol": "#0B0E0F",
+  "holes": 1,
+  "collarA": {
+    "dia": 10,
+    "height": 3,
+    "centered": true,
+    "offset1": 0, "offset2": 0, "offset3": 0, "offset4": 0
+  },
+  "collarB": null,
+  "collarC": null,
+  "quantity": 1,
+  "notes": "",
+  "shopifyProductId": "123456789",
+  "shopifyVariantId": "987654321"
+}
+```
+
+**Response** (200):
+```json
+{
+  "checkout_url": "https://your-store.myshopify.com/..."
+}
+```
+
+**Error responses**:
+- `400`: Missing required fields
+- `405`: Method not POST
+- `500`: Internal error (auth failure, etc.)
+- `502`: Shopify API error (includes `shopifyStatus` and `details`)
 
 ---
 
 ## How Orders Appear in Shopify Admin
 
-Each order will show:
-- **Line item title**: "Custom Chase Cover"
-- **Price**: The server-calculated price
-- **Properties** (visible in order details):
-  - Width: 48"
-  - Length: 60"
-  - Skirt: 3"
-  - Material: Galvanized
-  - Gauge: 24ga
-  - Holes: 1
-  - Drip Edge: Yes
-  - Diagonal Crease: Yes
-  - (etc.)
-- **Order note**: Full human-readable description of the configuration
-- **Hidden property** `_config_json`: Complete JSON config for reproduction
+Each Draft Order will show:
+
+### Line Item
+- **Title**: "Custom Chase Cover"
+- **Price**: Server-calculated price (tamper-proof)
+- **Quantity**: As selected by user
+- **Linked product/variant**: If `product-id` / `variant-id` were provided
+
+### Line Item Properties (visible in order details)
+- Width: 48"
+- Length: 60"
+- Skirt Height: 3"
+- Material: Galvanized
+- Gauge: 24ga
+- Drip Edge: Yes
+- Diagonal Crease: Yes
+- Powder Coat Color: (if enabled)
+- Holes: 1
+- Diameter: 10"
+- Collar Height: 3"
+- Position: Centered on cover (or A1/A2/A3/A4 offsets)
+- Special Notes: (if provided)
+- `_config_json`: Complete JSON config (hidden, for reproduction)
+
+### Order Note
+Human-readable multi-line description:
+```
+48" W x 60" L x 3" Skirt
+Material: Galvanized | Gauge: 24ga
+Drip Edge: Yes | Diagonal Crease: Yes
+H1: dia10" x 3" tall (centered)
+```
+
+---
+
+## Pricing: How It Works End-to-End
+
+### Client-Side (for display only)
+
+1. On app startup, `loadPricingFromAPI(apiBase)` calls `GET /api/pricing`
+2. Response updates the `PRICING` object in `src/config/pricing.ts`
+3. `onPricingLoaded()` triggers a price recompute in the Zustand store
+4. As users change configuration, price updates instantly using the fetched constants
+
+### Server-Side (tamper-proof, for actual orders)
+
+1. When "Add to Cart" is clicked, `POST /api/create-order` is called
+2. The server re-fetches pricing directly from Google Sheets API (not from cache)
+3. Price is recalculated server-side using the same formula
+4. The Draft Order is created with the **server-calculated price**
+5. Even if someone tampers with client-side pricing, the order price is always correct
+
+### Updating Prices
+
+Just edit values in the Google Sheet. Changes propagate:
+- To the **client** (displayed price): within ~5 minutes (server cache + HTTP cache)
+- To **new orders** (actual price): immediately (server always re-fetches from Google Sheets)
+
+No code changes or redeployment needed.
 
 ---
 
 ## Security Summary
 
-- **Client-side**: Calculates and displays price for UX only
-- **Server-side** (Vercel function): Recalculates price from scratch using Google Sheet values before creating the order
-- **Shopify**: Receives the Draft Order with server-calculated price — customer cannot alter it
-- **Google Sheet**: Only readable (Viewer access), not editable by public
+| Layer | Protection |
+|-------|-----------|
+| Client-side pricing | Display only — calculated from fetched constants, not trusted |
+| Server-side pricing | Re-fetched from Google Sheets on every order — tamper-proof |
+| Shopify Auth | Token never exposed to client; server-side only |
+| Google Sheet | Shared as "Viewer" only — not editable by public |
+| CORS | API endpoints allow `*` origin (required for cross-origin Shopify embedding) |
+| Shadow DOM | CSS isolation prevents Shopify theme from breaking configurator styles |
 
-The client-displayed price and the server-calculated price use the same formula. If someone tampers with the client-side price, it doesn't matter — the Draft Order always uses the server-calculated price.
+---
+
+## Troubleshooting
+
+### "Configuration error: API base not found"
+The IIFE couldn't detect its own script URL. Make sure the script tag's `src` contains `chase-configurator` in the filename.
+
+### Price shows $0 or incorrect value
+- Check browser console for pricing fetch errors
+- Verify `GET /api/pricing` returns valid JSON
+- Check that Google Sheet is shared as "Viewer" and API key is valid
+
+### "Add to Cart" fails
+- Check Vercel function logs for errors
+- Verify Shopify credentials are set in Vercel env vars
+- If using OAuth (Option B), ensure Client ID/Secret are correct
+- Check that the Shopify app has `write_draft_orders` scope
+
+### Configurator doesn't render on Shopify
+- Verify the IIFE URL returns JavaScript (not 404)
+- Check browser console for errors
+- Ensure `<chase-configurator>` element exists in the DOM before the script loads
+
+### AR doesn't work on Shopify
+- AR overlays are portaled to light DOM (`#chase-configurator-portal`) — this is required for `<model-viewer>` to work
+- On desktop, AR shows a QR code for mobile scanning
+- On mobile, `<model-viewer>` is loaded dynamically on first AR request
+
+### PDF download not working
+- The PDF is generated from a hidden HTML element rendered off-screen
+- Check browser console for `html2canvas` errors
+- Ensure the `PdfReport` component is mounted (it's rendered in `App.tsx`)
 
 ---
 
 ## Testing Checklist
 
 1. [ ] Google Sheet is set up with pricing values and shared as "Viewer"
-2. [ ] Vercel env vars are set (GOOGLE_SHEET_ID, GOOGLE_SHEETS_API_KEY, SHOPIFY_STORE, SHOPIFY_ACCESS_TOKEN)
+2. [ ] Vercel env vars are set (see Environment Variables section)
 3. [ ] `vercel --prod` deploys successfully
-4. [ ] Visiting `https://your-app.vercel.app/chase-configurator.iife.js` returns the JS file
-5. [ ] Visiting `https://your-app.vercel.app/api/pricing` returns JSON with pricing constants
-6. [ ] Shopify page loads the configurator correctly
-7. [ ] Price updates in real-time as user changes options
-8. [ ] "Add to Cart" redirects to Shopify checkout with correct price
-9. [ ] Order appears in Shopify admin with all configuration details
-10. [ ] Changing a value in Google Sheet updates pricing within 5 minutes
+4. [ ] `https://your-app.vercel.app/` shows the standalone configurator
+5. [ ] `https://your-app.vercel.app/chase-configurator.iife.js` returns the JS file
+6. [ ] `https://your-app.vercel.app/api/pricing` returns JSON with pricing constants
+7. [ ] Shopify page loads the configurator correctly (no CSS conflicts)
+8. [ ] Price updates in real-time as user changes options
+9. [ ] "Add to Cart" redirects to Shopify checkout with correct price
+10. [ ] Order appears in Shopify admin with all configuration details (properties, notes)
+11. [ ] Product/variant linking works (if using `product-id` / `variant-id` attributes)
+12. [ ] Changing a value in Google Sheet updates pricing within 5 minutes
+13. [ ] AR QR code works on desktop, AR placement works on mobile
+14. [ ] PDF download generates a valid specification worksheet

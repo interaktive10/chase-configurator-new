@@ -19,7 +19,7 @@ export function DimensionOverlay() {
     const W = config.w * SC;
     const L = config.l * SC;
     const skH = config.sk * SC;
-    const SLOPE = config.diag ? Math.sqrt(W * W + L * L) * 0.035 : 0;
+    const SLOPE = config.diag ? Math.sqrt(W * W + L * L) * 0.0175 : 0;
     const baseY = skH + SLOPE + 0.018;
 
     // --- Side labels: Top=-W/2(left in 3D), Right=-L/2(back), Bottom=+W/2(right), Left=+L/2(front) ---

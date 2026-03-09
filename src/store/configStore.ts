@@ -10,6 +10,7 @@ export interface CollarState {
   offset2: number;
   offset3: number;
   offset4: number;
+  stormCollar: boolean;
 }
 
 export interface ConfigState {
@@ -33,6 +34,10 @@ export interface ConfigState {
   quantity: number;
   notes: string;
   price: number;
+  orbitEnabled: boolean;
+  moveHolesMode: boolean;
+  setOrbitEnabled: (v: boolean) => void;
+  setMoveHolesMode: (v: boolean) => void;
   set: (partial: Partial<ConfigState>) => void;
   setCollar: (id: 'A' | 'B' | 'C', partial: Partial<CollarState>) => void;
 }
@@ -40,9 +45,10 @@ export interface ConfigState {
 const defaultCollar: CollarState = {
   dia: 6, height: 3, centered: true,
   offset1: 0, offset2: 0, offset3: 0, offset4: 0,
+  stormCollar: false,
 };
 
-type StoreData = Omit<ConfigState, 'set' | 'setCollar'>;
+type StoreData = Omit<ConfigState, 'set' | 'setCollar' | 'setOrbitEnabled' | 'setMoveHolesMode'>;
 
 function computePrice(s: Partial<StoreData>): number {
   const w = s.w ?? 24, l = s.l ?? 36, sk = s.sk ?? 3;
@@ -62,12 +68,14 @@ const initial: StoreData = {
   collarA: { ...defaultCollar, dia: 10 },
   collarB: { ...defaultCollar, dia: 10 },
   collarC: { ...defaultCollar, dia: 10 },
-  showLabels: true,
-  showLabelsA: true,
-  showLabelsB: true,
-  showLabelsC: true,
+  showLabels: false,
+  showLabelsA: false,
+  showLabelsB: false,
+  showLabelsC: false,
   quantity: 1, notes: '',
   price: 0,
+  orbitEnabled: true,
+  moveHolesMode: false,
 };
 initial.price = computePrice(initial);
 
@@ -83,6 +91,8 @@ export const useConfigStore = create<ConfigState>((set) => ({
     const next = { ...state, [key]: updated };
     return { [key]: updated, price: computePrice(next) };
   }),
+  setOrbitEnabled: (v: boolean) => set({ orbitEnabled: v }),
+  setMoveHolesMode: (v: boolean) => set({ moveHolesMode: v }),
 }));
 
 onPricingLoaded(() => {
