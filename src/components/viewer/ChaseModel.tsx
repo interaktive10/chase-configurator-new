@@ -246,7 +246,6 @@ export function ChaseModel() {
         // Rebuild full procedural geometry and attach to group
         try {
             buildCoverWithoutCollars(grp, config);
-            (window as any).__chaseGroup = grp;
         } catch (e) {
             console.error("Failed to build geometry", e);
         }
@@ -257,7 +256,11 @@ export function ChaseModel() {
     ]);
 
     return (
-        <group>
+        <group
+            ref={(node) => {
+                if (node) (window as any).__chaseGroup = node;
+            }}
+        >
             <group ref={groupRef} onClick={() => setActiveId(null)} />
             {config.holes >= 1 && <HoleComponent id="A" config={config} activeId={activeId} setActiveId={setActiveId} mat={mat} />}
             {config.holes >= 2 && <HoleComponent id="B" config={config} activeId={activeId} setActiveId={setActiveId} mat={mat} />}

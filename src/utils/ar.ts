@@ -48,11 +48,12 @@ export function getConfigState(config: Partial<ConfigState>): string {
     drip: config.drip ? 1 : 0, diag: config.diag ? 1 : 0,
     holes: config.holes, mat: config.mat,
     pc: config.pc ? 1 : 0, pcCol: config.pcCol,
+    gauge: config.gauge,
   };
   const cA = config.collarA, cB = config.collarB, cC = config.collarC;
-  if ((config.holes ?? 0) >= 1 && cA) state.cA = { d: cA.dia, h: cA.height, c: cA.centered ? 1 : 0, a1: cA.offset1, a2: cA.offset2 };
-  if ((config.holes ?? 0) >= 2 && cB) state.cB = { d: cB.dia, h: cB.height, c: cB.centered ? 1 : 0, b1: cB.offset1, b2: cB.offset2 };
-  if ((config.holes ?? 0) === 3 && cC) state.cC = { d: cC.dia, h: cC.height, c: cC.centered ? 1 : 0, c1: cC.offset1, c2: cC.offset2 };
+  if ((config.holes ?? 0) >= 1 && cA) state.cA = { d: cA.dia, h: cA.height, c: cA.centered ? 1 : 0, a1: cA.offset1, a2: cA.offset2, a3: cA.offset3, a4: cA.offset4, sc: cA.stormCollar ? 1 : 0 };
+  if ((config.holes ?? 0) >= 2 && cB) state.cB = { d: cB.dia, h: cB.height, c: cB.centered ? 1 : 0, b1: cB.offset1, b2: cB.offset2, b3: cB.offset3, b4: cB.offset4, sc: cB.stormCollar ? 1 : 0 };
+  if ((config.holes ?? 0) === 3 && cC) state.cC = { d: cC.dia, h: cC.height, c: cC.centered ? 1 : 0, c1: cC.offset1, c2: cC.offset2, c3: cC.offset3, c4: cC.offset4, sc: cC.stormCollar ? 1 : 0 };
   return btoa(JSON.stringify(state));
 }
 
@@ -63,10 +64,11 @@ export function applyConfigState(base64: string): Partial<ConfigState> {
       w: parseFloat(s.w) || 24, l: parseFloat(s.l) || 36, sk: parseFloat(s.sk) || 3,
       drip: !!s.drip, diag: !!s.diag, holes: s.holes || 0,
       mat: s.mat || 'galvanized', pc: !!s.pc, pcCol: s.pcCol || '#101010',
+      gauge: s.gauge || 24,
     };
-    if (s.cA) partial.collarA = { dia: parseFloat(s.cA.d), height: parseFloat(s.cA.h), centered: !!s.cA.c, offset1: parseFloat(s.cA.a1) || 0, offset2: parseFloat(s.cA.a2) || 0, offset3: 0, offset4: 0, stormCollar: false };
-    if (s.cB) partial.collarB = { dia: parseFloat(s.cB.d), height: parseFloat(s.cB.h), centered: !!s.cB.c, offset1: parseFloat(s.cB.b1) || 0, offset2: parseFloat(s.cB.b2) || 0, offset3: 0, offset4: 0, stormCollar: false };
-    if (s.cC) partial.collarC = { dia: parseFloat(s.cC.d), height: parseFloat(s.cC.h), centered: !!s.cC.c, offset1: parseFloat(s.cC.c1) || 0, offset2: parseFloat(s.cC.c2) || 0, offset3: 0, offset4: 0, stormCollar: false };
+    if (s.cA) partial.collarA = { dia: parseFloat(s.cA.d), height: parseFloat(s.cA.h), centered: !!s.cA.c, offset1: parseFloat(s.cA.a1) || 0, offset2: parseFloat(s.cA.a2) || 0, offset3: parseFloat(s.cA.a3) || 0, offset4: parseFloat(s.cA.a4) || 0, stormCollar: !!s.cA.sc };
+    if (s.cB) partial.collarB = { dia: parseFloat(s.cB.d), height: parseFloat(s.cB.h), centered: !!s.cB.c, offset1: parseFloat(s.cB.b1) || 0, offset2: parseFloat(s.cB.b2) || 0, offset3: parseFloat(s.cB.b3) || 0, offset4: parseFloat(s.cB.b4) || 0, stormCollar: !!s.cB.sc };
+    if (s.cC) partial.collarC = { dia: parseFloat(s.cC.d), height: parseFloat(s.cC.h), centered: !!s.cC.c, offset1: parseFloat(s.cC.c1) || 0, offset2: parseFloat(s.cC.c2) || 0, offset3: parseFloat(s.cC.c3) || 0, offset4: parseFloat(s.cC.c4) || 0, stormCollar: !!s.cC.sc };
     return partial;
   } catch {
     return {};

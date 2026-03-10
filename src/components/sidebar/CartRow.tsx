@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useConfigStore } from '../../store/configStore';
 
 interface Props { onAddToCart: () => void; }
@@ -7,6 +8,19 @@ const MAX_QTY = 10;
 export function CartRow({ onAddToCart }: Props) {
   const quantity = useConfigStore(s => s.quantity);
   const set = useConfigStore(s => s.set);
+  const [quantityText, setQuantityText] = useState(String(quantity));
+
+  useEffect(() => {
+    setQuantityText(String(quantity));
+  }, [quantity]);
+
+  function commitQuantity(raw: string) {
+    const digitsOnly = raw.replace(/\D+/g, '');
+    const parsed = parseInt(digitsOnly, 10);
+    const next = Number.isFinite(parsed) ? Math.max(1, Math.min(MAX_QTY, parsed)) : 1;
+    set({ quantity: next });
+    setQuantityText(String(next));
+  }
 
   return (
     <>
@@ -16,14 +30,19 @@ export function CartRow({ onAddToCart }: Props) {
           <input
             type="number"
             min={1} max={MAX_QTY} step={1}
-            value={quantity}
+            inputMode="numeric"
+            value={quantityText}
             onChange={e => {
-              const v = parseInt(e.target.value) || 1;
-              set({ quantity: Math.max(1, Math.min(MAX_QTY, v)) });
+              const nextText = e.target.value.replace(/[^\d]/g, '');
+              setQuantityText(nextText);
             }}
-            onBlur={() => {
-              if (quantity > MAX_QTY) set({ quantity: MAX_QTY });
-              if (quantity < 1) set({ quantity: 1 });
+            onFocus={e => e.currentTarget.select()}
+            onBlur={e => commitQuantity(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                commitQuantity((e.target as HTMLInputElement).value);
+                (e.target as HTMLInputElement).blur();
+              }
             }}
             style={{ width: '52px' }}
           />

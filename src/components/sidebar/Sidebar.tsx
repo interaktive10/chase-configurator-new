@@ -83,7 +83,7 @@ export function Sidebar({ descExpanded, setDescExpanded, bdOpen, setBdOpen, onOp
             {/* Measurement Note */}
             <div className="measure-note" style={{ marginBottom: '20px' }}>
               ⚠️ You must add an extra <strong>¼"</strong> to both the length and width measurements for proper
-              fitment. If you need a custom shape, please <a href="https://kaminos.com/contact" target="_blank" rel="noreferrer">give us a call</a>.{' '}
+              fitment. If you need a custom shape, please <a href="tel:+18887779789">give us a call</a>.{' '}
               Need help measuring? <a href="https://kaminos.com/measuring-guide" target="_blank" rel="noreferrer">Click here</a>.
             </div>
           </>
