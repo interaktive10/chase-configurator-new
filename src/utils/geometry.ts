@@ -304,30 +304,49 @@ export function buildCollarForHole(
     // When storm collar is enabled, the collar cylinder narrows to match the cone top seamlessly
     const collarR = stormEnabled ? stormTopR : hole.r;
 
+    const outerR = collarR + T * 0.5;
+    const innerR = Math.max(T * 1.2, collarR - T * 0.5);
     const colVerts: number[] = [];
     const colIdx: number[] = [];
 
     for (let i = 0; i < COLLAR_SEGS; i++) {
         const a = (i / COLLAR_SEGS) * Math.PI * 2;
-        // Generate relative to hole center (0, 0) since group position handles translation
-        const px = Math.cos(a) * collarR;
-        const pz = Math.sin(a) * collarR;
+        const cos = Math.cos(a);
+        const sin = Math.sin(a);
 
-        // For the bottom Y, find the roof height at the ABSOLUTE position
-        const absPx = hole.wx + px;
-        const absPz = hole.wz + pz;
+        const outerPx = cos * outerR;
+        const outerPz = sin * outerR;
+        const innerPx = cos * innerR;
+        const innerPz = sin * innerR;
 
-        const btmY = roofSurfaceY(absPx, absPz) - 0.002;
+        const outerBottomY = roofSurfaceY(hole.wx + outerPx, hole.wz + outerPz) - 0.002;
+        const innerBottomY = roofSurfaceY(hole.wx + innerPx, hole.wz + innerPz) - 0.002;
 
-        colVerts.push(px, topY, pz);
-        colVerts.push(px, btmY, pz);
+        // Vertex layout per segment:
+        // 0 outer top, 1 outer bottom, 2 inner top, 3 inner bottom
+        colVerts.push(
+            outerPx, topY, outerPz,
+            outerPx, outerBottomY, outerPz,
+            innerPx, topY, innerPz,
+            innerPx, innerBottomY, innerPz
+        );
     }
 
     for (let i = 0; i < COLLAR_SEGS; i++) {
-        const cur = i * 2;
-        const next = ((i + 1) % COLLAR_SEGS) * 2;
+        const cur = i * 4;
+        const next = ((i + 1) % COLLAR_SEGS) * 4;
+
+        // Outer wall
         colIdx.push(cur, next, cur + 1);
         colIdx.push(next, next + 1, cur + 1);
+
+        // Inner wall (reverse winding so normals face inward)
+        colIdx.push(cur + 2, cur + 3, next + 2);
+        colIdx.push(next + 2, cur + 3, next + 3);
+
+        // Top rim
+        colIdx.push(cur, cur + 2, next);
+        colIdx.push(next, cur + 2, next + 2);
     }
 
     const cGeo = new THREE.BufferGeometry();
@@ -342,8 +361,8 @@ export function buildCollarForHole(
     grp.add(cMesh);
 
     // Top ring cap for the collar
-    const lo = collarR + T;
-    const li = collarR - T * 0.5;
+    const lo = outerR + T * 0.5;
+    const li = innerR;
     const rG = new THREE.RingGeometry(li, lo, 32);
     const rm = new THREE.Mesh(rG, mat.clone());
     rm.rotation.x = -Math.PI / 2;
